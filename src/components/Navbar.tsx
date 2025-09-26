@@ -20,10 +20,10 @@ export function Navbar() {
   };
 
   return (
-    <nav className="sticky top-0 z-50 w-full border-b border-surface-3 bg-surface/95 backdrop-blur supports-[backdrop-filter]:bg-surface/80">
+    <nav className="sticky top-0 z-50 w-full border-b border-border bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/90 shadow-sm">
       <div className="container mx-auto px-4 h-16 flex items-center justify-between">
         {/* Logo */}
-        <Link to="/" className="flex items-center gap-2 font-bold text-xl text-foreground hover:text-accent transition-colors">
+        <Link to="/" className="flex items-center gap-2 font-bold text-xl text-primary hover:text-accent transition-colors">
           <Home className="h-6 w-6 text-accent" />
           HokieNest
         </Link>

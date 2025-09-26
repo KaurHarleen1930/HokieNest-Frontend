@@ -1,7 +1,6 @@
 import type { Config } from "tailwindcss";
 
 export default {
-  darkMode: ["class"],
   content: ["./pages/**/*.{ts,tsx}", "./components/**/*.{ts,tsx}", "./app/**/*.{ts,tsx}", "./src/**/*.{ts,tsx}"],
   prefix: "",
   theme: {
@@ -18,7 +17,7 @@ export default {
     },
     extend: {
       fontFamily: {
-        sans: ['Inter', 'system-ui', '-apple-system', 'sans-serif'],
+        sans: ['Source Sans Pro', 'system-ui', '-apple-system', 'sans-serif'],
       },
       colors: {
         border: "hsl(var(--border))",
@@ -28,7 +27,8 @@ export default {
         foreground: "hsl(var(--foreground))",
         primary: {
           DEFAULT: "hsl(var(--primary))",
-          glow: "hsl(var(--primary-glow))",
+          dark: "hsl(var(--primary-dark))",
+          light: "hsl(var(--primary-light))",
           foreground: "hsl(var(--primary-foreground))",
         },
         secondary: {
@@ -46,7 +46,8 @@ export default {
         },
         accent: {
           DEFAULT: "hsl(var(--accent))",
-          muted: "hsl(var(--accent-muted))",
+          light: "hsl(var(--accent-light))",
+          dark: "hsl(var(--accent-dark))",
           foreground: "hsl(0 0% 100%)",
         },
         popover: {
@@ -80,7 +81,7 @@ export default {
       backgroundImage: {
         'gradient-primary': 'var(--gradient-primary)',
         'gradient-accent': 'var(--gradient-accent)',
-        'gradient-surface': 'var(--gradient-surface)',
+        'gradient-hero': 'var(--gradient-hero)',
       },
       transitionDuration: {
         fast: "var(--transition-fast)",
@@ -112,7 +113,7 @@ export default {
           "0%": { transform: "translateX(-100%)", opacity: "0" },
           "100%": { transform: "translateX(0)", opacity: "1" },
         },
-        "glow": {
+        "vt-glow": {
           "0%, 100%": { boxShadow: "0 0 20px hsl(var(--accent) / 0.3)" },
           "50%": { boxShadow: "0 0 30px hsl(var(--accent) / 0.5)" },
         },
@@ -124,7 +125,7 @@ export default {
         "fade-out": "fade-out 0.3s ease-out",
         "scale-in": "scale-in 0.2s ease-out",
         "slide-in": "slide-in 0.3s ease-out",
-        "glow": "glow 2s ease-in-out infinite",
+        "vt-glow": "vt-glow 2s ease-in-out infinite",
       },
       spacing: {
         18: "4.5rem",
