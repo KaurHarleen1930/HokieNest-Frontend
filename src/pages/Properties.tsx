@@ -7,11 +7,12 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { PropertyCard } from "@/components/PropertyCard";
+import { PropertyMap } from "@/components/PropertyMap";
 import { PropertiesListSkeleton } from "@/components/ui/loading-skeleton";
 import { EmptyState } from "@/components/ui/empty-state";
 import { ErrorState } from "@/components/ui/error-state";
 import { listingsAPI, Listing } from "@/lib/api";
-import { Search, Filter, Home, ChevronDown, ChevronUp } from "lucide-react";
+import { Search, Filter, Home, ChevronDown, ChevronUp, MapIcon, Grid3X3 } from "lucide-react";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 
 interface Filters {
@@ -27,6 +28,8 @@ export default function Properties() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [filtersOpen, setFiltersOpen] = useState(false);
+  const [viewMode, setViewMode] = useState<'grid' | 'map'>('grid');
+  const [selectedProperty, setSelectedProperty] = useState<Listing | null>(null);
   const [filters, setFilters] = useState<Filters>({
     minPrice: "",
     maxPrice: "",
@@ -139,6 +142,25 @@ export default function Properties() {
           </div>
           
           <div className="flex items-center gap-3 mt-4 md:mt-0">
+            {/* View Mode Toggle */}
+            <div className="flex items-center border border-surface-3 rounded-lg p-1">
+              <Button
+                variant={viewMode === 'grid' ? 'default' : 'ghost'}
+                size="sm"
+                onClick={() => setViewMode('grid')}
+                className="h-8"
+              >
+                <Grid3X3 className="h-4 w-4" />
+              </Button>
+              <Button
+                variant={viewMode === 'map' ? 'default' : 'ghost'}
+                size="sm"
+                onClick={() => setViewMode('map')}
+                className="h-8"
+              >
+                <MapIcon className="h-4 w-4" />
+              </Button>
+            </div>
             <Badge variant="muted">
               {listings.filter(l => l.intlFriendly).length} International Friendly
             </Badge>
@@ -267,7 +289,7 @@ export default function Properties() {
             </Collapsible>
           </div>
 
-          {/* Properties Grid */}
+          {/* Main Content */}
           <div className="flex-1">
             {listings.length === 0 ? (
               <EmptyState
@@ -279,11 +301,43 @@ export default function Properties() {
                   onClick: clearFilters
                 }}
               />
-            ) : (
+            ) : viewMode === 'grid' ? (
+              /* Properties Grid */
               <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
                 {listings.map((listing) => (
-                  <PropertyCard key={listing.id} listing={listing} />
+                  <PropertyCard 
+                    key={listing.id} 
+                    listing={listing}
+                    className={selectedProperty?.id === listing.id ? 'ring-2 ring-accent' : ''}
+                  />
                 ))}
+              </div>
+            ) : (
+              /* Map View */
+              <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 h-[600px]">
+                <div className="lg:col-span-2">
+                  <PropertyMap
+                    properties={listings}
+                    selectedProperty={selectedProperty}
+                    onPropertySelect={setSelectedProperty}
+                    className="h-full"
+                  />
+                </div>
+                <div className="space-y-4 overflow-y-auto">
+                  <h3 className="font-semibold text-lg">Properties ({listings.length})</h3>
+                  {listings.map((listing) => (
+                    <PropertyCard 
+                      key={listing.id} 
+                      listing={listing}
+                      className={`cursor-pointer transition-all ${
+                        selectedProperty?.id === listing.id 
+                          ? 'ring-2 ring-accent shadow-lg' 
+                          : 'hover:shadow-md'
+                      }`}
+                      onClick={() => setSelectedProperty(listing)}
+                    />
+                  ))}
+                </div>
               </div>
             )}
           </div>

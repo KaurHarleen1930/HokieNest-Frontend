@@ -8,19 +8,27 @@ import { useNavigate } from "react-router-dom";
 interface PropertyCardProps {
   listing: Listing;
   className?: string;
+  onClick?: () => void;
 }
 
-export function PropertyCard({ listing, className }: PropertyCardProps) {
+export function PropertyCard({ listing, className, onClick }: PropertyCardProps) {
   const navigate = useNavigate();
 
   const handleViewDetails = () => {
     navigate(`/properties/${listing.id}`);
   };
 
+  const handleCardClick = () => {
+    if (onClick) {
+      onClick();
+    }
+  };
+
   return (
     <div 
-      className={`group overflow-hidden rounded-lg border border-surface-3 bg-surface hover:shadow-lg transition-all duration-normal ${className}`}
+      className={`group overflow-hidden rounded-lg border border-surface-3 bg-surface hover:shadow-lg transition-all duration-normal cursor-pointer ${className}`}
       data-testid="listing-card"
+      onClick={handleCardClick}
     >
       {/* Image */}
       <div className="relative overflow-hidden">

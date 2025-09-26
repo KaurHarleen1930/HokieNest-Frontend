@@ -11,6 +11,7 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "@googlemaps/js-api-loader": "^1.16.10",
     "@hookform/resolvers": "^3.10.0",
     "@playwright/test": "^1.55.1",
     "@radix-ui/react-accordion": "^1.2.11",
@@ -44,6 +45,7 @@
     "@testing-library/jest-dom": "^6.8.0",
     "@testing-library/react": "^16.3.0",
     "@testing-library/user-event": "^14.6.1",
+    "@types/google.maps": "^3.58.1",
     "@types/jest": "^30.0.0",
     "@vitejs/plugin-react": "^5.0.3",
     "class-variance-authority": "^0.7.1",
