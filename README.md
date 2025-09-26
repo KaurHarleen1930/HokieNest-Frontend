@@ -1,73 +1,278 @@
-# Welcome to your Lovable project
+# HokieNest - Virginia Tech Housing Platform
 
-## Project info
+HokieNest is a comprehensive housing platform designed specifically for the Virginia Tech community. Students and staff can discover verified rental properties, connect with landlords, and find international student-friendly housing options.
 
-**URL**: https://lovable.dev/projects/959f1fd9-1420-4659-9d12-31cb53f2369e
+## 🏠 Features
 
-## How can I edit this code?
+- **VT Community Focus**: Exclusively for Virginia Tech students and staff with @vt.edu email addresses
+- **Smart Property Search**: Advanced filters for price, bedrooms, bathrooms, and international-friendly options
+- **Verified Listings**: All properties are verified with clear international student support indicators
+- **Secure Authentication**: Role-based access control (student/staff/admin)
+- **Admin Panel**: User management and platform monitoring tools
+- **Responsive Design**: Optimized for mobile, tablet, and desktop experiences
+- **Dark Theme**: Modern VT-inspired design with maroon and orange accents
 
-There are several ways of editing your application.
+## 🚀 Quick Start
 
-**Use Lovable**
+### Prerequisites
 
-Simply visit the [Lovable Project](https://lovable.dev/projects/959f1fd9-1420-4659-9d12-31cb53f2369e) and start prompting.
+- Node.js 18+ and npm
+- Git
 
-Changes made via Lovable will be committed automatically to this repo.
+### Installation
 
-**Use your preferred IDE**
+1. **Clone the repository**
+   ```bash
+   git clone <your-repo-url>
+   cd hokienest
+   ```
 
-If you want to work locally using your own IDE, you can clone this repo and push changes. Pushed changes will also be reflected in Lovable.
+2. **Install dependencies**
+   ```bash
+   npm install
+   ```
 
-The only requirement is having Node.js & npm installed - [install with nvm](https://github.com/nvm-sh/nvm#installing-and-updating)
+3. **Set up the backend**
+   ```bash
+   npm run server:setup
+   ```
 
-Follow these steps:
+4. **Start development servers**
+   ```bash
+   npm run dev
+   ```
 
-```sh
-# Step 1: Clone the repository using the project's Git URL.
-git clone <YOUR_GIT_URL>
+The frontend will be available at `http://localhost:5173` and the backend API at `http://localhost:4000`.
 
-# Step 2: Navigate to the project directory.
-cd <YOUR_PROJECT_NAME>
+## 📋 Demo Accounts
 
-# Step 3: Install the necessary dependencies.
-npm i
+Use these pre-configured accounts to test the application:
 
-# Step 4: Start the development server with auto-reloading and an instant preview.
-npm run dev
+- **Student**: `jdoe@vt.edu` / `password`
+- **Staff**: `staff@vt.edu` / `password`
+- **Admin**: `admin@vt.edu` / `password`
+
+## 🛠 Available Scripts
+
+### Development
+- `npm run dev` - Start both frontend and backend development servers
+- `npm run dev:frontend` - Start only the frontend development server
+- `npm run dev:backend` - Start only the backend development server
+
+### Backend Management
+- `npm run server:setup` - Install backend dependencies and set up database
+- `npm run server:build` - Build the backend for production
+- `npm run server:start` - Start the production backend server
+
+### Testing
+- `npm test` - Run unit tests with Vitest
+- `npm run test:ui` - Run tests with UI interface
+- `npm run test:coverage` - Run tests with coverage report
+- `npm run e2e` - Run end-to-end tests with Playwright
+- `npm run e2e:ui` - Run E2E tests with UI interface
+- `npm run server:test` - Run backend unit tests
+
+### Production
+- `npm run build` - Build frontend for production
+- `npm run preview` - Preview production build locally
+
+## 🏗 Architecture
+
+### Frontend (React + TypeScript)
+- **Framework**: React 18 with TypeScript
+- **Routing**: React Router v6
+- **Styling**: Tailwind CSS with custom design system
+- **UI Components**: Radix UI with custom variants
+- **State Management**: React Query for server state, Context for auth
+- **Form Handling**: React Hook Form with Zod validation
+- **Testing**: Vitest + React Testing Library + Playwright
+
+### Backend (Node.js + Express)
+- **Runtime**: Node.js with TypeScript
+- **Framework**: Express.js
+- **Database**: SQLite with Prisma ORM
+- **Authentication**: JWT with bcrypt password hashing
+- **Validation**: Zod schema validation
+- **Testing**: Jest with Supertest
+
+### Security Features
+- VT email validation (@vt.edu required)
+- JWT token authentication
+- Role-based authorization
+- Password hashing with bcrypt
+- CORS protection
+- Input validation and sanitization
+- CSP headers for XSS protection
+
+## 📁 Project Structure
+
+```
+hokienest/
+├── src/                      # Frontend source code
+│   ├── components/           # Reusable React components
+│   ├── pages/               # Page components
+│   ├── lib/                 # Utilities and API clients
+│   ├── design/              # Design system tokens
+│   └── test/                # Test utilities
+├── server/                   # Backend source code
+│   ├── src/                 # Server source files
+│   ├── prisma/              # Database schema and seeds
+│   └── __tests__/           # Backend tests
+├── e2e/                     # End-to-end tests
+├── docs/                    # Documentation
+└── public/                  # Static assets
 ```
 
-**Edit a file directly in GitHub**
+## 🧪 Testing Strategy
 
-- Navigate to the desired file(s).
-- Click the "Edit" button (pencil icon) at the top right of the file view.
-- Make your changes and commit the changes.
+### Unit Tests
+- **Frontend**: Component testing with React Testing Library
+- **Backend**: API endpoint testing with Jest and Supertest
+- **Coverage**: Comprehensive test coverage for critical paths
 
-**Use GitHub Codespaces**
+### Integration Tests
+- Authentication flow testing
+- API integration testing
+- Database operations testing
 
-- Navigate to the main page of your repository.
-- Click on the "Code" button (green button) near the top right.
-- Select the "Codespaces" tab.
-- Click on "New codespace" to launch a new Codespace environment.
-- Edit files directly within the Codespace and commit and push your changes once you're done.
+### End-to-End Tests
+- Complete user journeys with Playwright
+- Cross-browser testing (Chrome, Firefox, Safari)
+- Mobile responsiveness testing
 
-## What technologies are used for this project?
+### Security Tests
+- Admin authorization enforcement
+- Authentication bypass prevention
+- Input validation testing
 
-This project is built with:
+## 🔒 Security Implementation
 
-- Vite
-- TypeScript
-- React
-- shadcn-ui
-- Tailwind CSS
+### Authentication & Authorization
+- JWT-based authentication with 7-day expiration
+- Role-based access control (student/staff/admin)
+- Protected routes with automatic redirection
+- Session validation on page refresh
 
-## How can I deploy this project?
+### Data Protection
+- Password hashing with bcrypt (12 rounds)
+- VT email validation (@vt.edu requirement)
+- Input sanitization with Zod schemas
+- SQL injection prevention with Prisma
 
-Simply open [Lovable](https://lovable.dev/projects/959f1fd9-1420-4659-9d12-31cb53f2369e) and click on Share -> Publish.
+### Admin Security
+- Admin-only routes protected server-side
+- UI elements hidden for non-admin users
+- User suspension capabilities
+- Audit trail for admin actions
 
-## Can I connect a custom domain to my Lovable project?
+## 🌐 Deployment
 
-Yes, you can!
+### Frontend
+Build the frontend for production:
+```bash
+npm run build
+```
 
-To connect a domain, navigate to Project > Settings > Domains and click Connect Domain.
+### Backend
+1. Set environment variables in production
+2. Build the backend:
+   ```bash
+   npm run server:build
+   ```
+3. Run database migrations:
+   ```bash
+   cd server && npm run prisma:migrate
+   ```
+4. Start the server:
+   ```bash
+   npm run server:start
+   ```
 
-Read more here: [Setting up a custom domain](https://docs.lovable.dev/features/custom-domain#custom-domain)
+### Environment Variables
+Required environment variables for production:
+
+**Backend (.env)**
+```
+DATABASE_URL="your-production-database-url"
+JWT_SECRET="your-super-secure-jwt-secret"
+PORT=4000
+NODE_ENV=production
+```
+
+**Frontend**
+```
+VITE_API_BASE_URL="/api/v1"
+```
+
+## 🔍 SEO & Performance
+
+### SEO Implementation
+- Semantic HTML structure with proper headings
+- Meta tags for title, description, and keywords
+- Open Graph and Twitter Card support
+- Canonical URLs for proper indexing
+- Alt text for all images
+- Clean, descriptive URLs
+
+### Performance Optimizations
+- Image lazy loading for faster page loads
+- Component code splitting
+- Optimized bundle sizes
+- Skeleton loading states
+- Efficient re-rendering with proper React keys
+
+## 🎨 Design System
+
+The HokieNest design system uses Virginia Tech's brand colors in a modern dark theme:
+
+### Colors
+- **Primary**: VT Maroon (#5E1A1A)
+- **Accent**: VT Orange (#F47C2A)
+- **Background**: Dark surfaces for modern appeal
+- **Text**: High contrast for accessibility
+
+### Typography
+- **Font**: Inter for clarity and readability
+- **Scale**: Responsive typography with proper line heights
+- **Hierarchy**: Clear heading structure for accessibility
+
+### Components
+- Consistent spacing using 4px base grid
+- Rounded corners with 8px/12px/16px scale
+- Smooth transitions and hover effects
+- Accessible focus states
+
+## 🤝 Contributing
+
+### Development Workflow
+1. Create a feature branch from `main`
+2. Make your changes with appropriate tests
+3. Run the test suite to ensure everything passes
+4. Submit a pull request with detailed description
+
+### Code Standards
+- TypeScript for type safety
+- ESLint configuration for code consistency
+- Prettier for code formatting
+- Conventional commits for clear history
+
+### Testing Requirements
+- Unit tests for new components and functions
+- Integration tests for API changes
+- E2E tests for new user flows
+- Maintain 80%+ test coverage
+
+## 📝 License
+
+This project is licensed under the MIT License. See [LICENSE](LICENSE) for details.
+
+## 🆘 Support
+
+For support or questions:
+- Check the [documentation](docs/)
+- Review existing [issues](issues/)
+- Contact the development team
+
+---
+
+Built with ❤️ for the Virginia Tech community

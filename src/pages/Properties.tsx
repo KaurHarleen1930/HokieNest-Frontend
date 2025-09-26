@@ -1,0 +1,282 @@
+import { useState, useEffect } from "react";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
+import { PropertyCard } from "@/components/PropertyCard";
+import { PropertiesListSkeleton } from "@/components/ui/loading-skeleton";
+import { EmptyState } from "@/components/ui/empty-state";
+import { ErrorState } from "@/components/ui/error-state";
+import { listingsAPI, Listing } from "@/lib/api";
+import { Search, Filter, Home, ChevronDown, ChevronUp } from "lucide-react";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
+
+interface Filters {
+  minPrice: string;
+  maxPrice: string;
+  beds: string;
+  baths: string;
+  intlFriendly: boolean;
+}
+
+export default function Properties() {
+  const [listings, setListings] = useState<Listing[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [filtersOpen, setFiltersOpen] = useState(false);
+  const [filters, setFilters] = useState<Filters>({
+    minPrice: "",
+    maxPrice: "",
+    beds: "",
+    baths: "",
+    intlFriendly: false,
+  });
+
+  const fetchListings = async () => {
+    try {
+      setLoading(true);
+      setError(null);
+      
+      const apiFilters: any = {};
+      if (filters.minPrice) apiFilters.minPrice = parseInt(filters.minPrice);
+      if (filters.maxPrice) apiFilters.maxPrice = parseInt(filters.maxPrice);
+      if (filters.beds) apiFilters.beds = parseInt(filters.beds);
+      if (filters.baths) apiFilters.baths = parseInt(filters.baths);
+      if (filters.intlFriendly) apiFilters.intlFriendly = true;
+
+      const data = await listingsAPI.getAll(apiFilters);
+      setListings(data);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to fetch properties");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchListings();
+  }, []);
+
+  const handleFilterChange = (key: keyof Filters, value: any) => {
+    setFilters(prev => ({ ...prev, [key]: value }));
+  };
+
+  const applyFilters = () => {
+    fetchListings();
+  };
+
+  const clearFilters = () => {
+    setFilters({
+      minPrice: "",
+      maxPrice: "",
+      beds: "",
+      baths: "",
+      intlFriendly: false,
+    });
+    // Apply cleared filters immediately
+    setTimeout(() => {
+      fetchListings();
+    }, 0);
+  };
+
+  const activeFilterCount = Object.values(filters).filter(value => 
+    value !== "" && value !== false
+  ).length;
+
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-background">
+        <div className="container mx-auto px-4 py-8">
+          <div className="mb-8">
+            <h1 className="text-3xl font-bold text-foreground mb-2">Properties</h1>
+            <p className="text-muted">Find your perfect housing near Virginia Tech</p>
+          </div>
+          <PropertiesListSkeleton />
+        </div>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="min-h-screen bg-background">
+        <div className="container mx-auto px-4 py-8">
+          <ErrorState
+            title="Failed to load properties"
+            description={error}
+            onRetry={fetchListings}
+          />
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="min-h-screen bg-background">
+      <div className="container mx-auto px-4 py-8">
+        {/* Header */}
+        <div className="flex flex-col md:flex-row md:items-center justify-between mb-8">
+          <div>
+            <h1 className="text-3xl font-bold text-foreground mb-2">Properties</h1>
+            <p className="text-muted">
+              {listings.length} {listings.length === 1 ? 'property' : 'properties'} available
+            </p>
+          </div>
+          
+          <div className="flex items-center gap-3 mt-4 md:mt-0">
+            <Badge variant="muted">
+              {listings.filter(l => l.intlFriendly).length} International Friendly
+            </Badge>
+          </div>
+        </div>
+
+        <div className="flex flex-col lg:flex-row gap-8">
+          {/* Filters Sidebar */}
+          <div className="lg:w-80">
+            <Collapsible open={filtersOpen} onOpenChange={setFiltersOpen}>
+              <Card className="bg-surface border-surface-3 sticky top-4">
+                <CardHeader className="pb-3">
+                  <CollapsibleTrigger asChild>
+                    <Button variant="ghost" className="w-full justify-between p-0 h-auto">
+                      <CardTitle className="flex items-center gap-2 text-lg">
+                        <Filter className="h-5 w-5" />
+                        Filters
+                        {activeFilterCount > 0 && (
+                          <Badge variant="accent" className="ml-2 text-xs">
+                            {activeFilterCount}
+                          </Badge>
+                        )}
+                      </CardTitle>
+                      {filtersOpen ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+                    </Button>
+                  </CollapsibleTrigger>
+                </CardHeader>
+                
+                <CollapsibleContent>
+                  <CardContent className="space-y-6">
+                    {/* Price Range */}
+                    <div className="space-y-3">
+                      <Label className="text-sm font-medium">Price Range</Label>
+                      <div className="grid grid-cols-2 gap-2">
+                        <div>
+                          <Label htmlFor="minPrice" className="text-xs text-muted">Min</Label>
+                          <Input
+                            id="minPrice"
+                            type="number"
+                            placeholder="$500"
+                            value={filters.minPrice}
+                            onChange={(e) => handleFilterChange('minPrice', e.target.value)}
+                            className="bg-surface-2 border-surface-3"
+                          />
+                        </div>
+                        <div>
+                          <Label htmlFor="maxPrice" className="text-xs text-muted">Max</Label>
+                          <Input
+                            id="maxPrice"
+                            type="number"
+                            placeholder="$2000"
+                            value={filters.maxPrice}
+                            onChange={(e) => handleFilterChange('maxPrice', e.target.value)}
+                            className="bg-surface-2 border-surface-3"
+                          />
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Bedrooms */}
+                    <div className="space-y-3">
+                      <Label className="text-sm font-medium">Bedrooms</Label>
+                      <Select
+                        value={filters.beds}
+                        onValueChange={(value) => handleFilterChange('beds', value)}
+                      >
+                        <SelectTrigger className="bg-surface-2 border-surface-3">
+                          <SelectValue placeholder="Any" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="">Any</SelectItem>
+                          <SelectItem value="1">1 bedroom</SelectItem>
+                          <SelectItem value="2">2 bedrooms</SelectItem>
+                          <SelectItem value="3">3 bedrooms</SelectItem>
+                          <SelectItem value="4">4+ bedrooms</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+
+                    {/* Bathrooms */}
+                    <div className="space-y-3">
+                      <Label className="text-sm font-medium">Bathrooms</Label>
+                      <Select
+                        value={filters.baths}
+                        onValueChange={(value) => handleFilterChange('baths', value)}
+                      >
+                        <SelectTrigger className="bg-surface-2 border-surface-3">
+                          <SelectValue placeholder="Any" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="">Any</SelectItem>
+                          <SelectItem value="1">1 bathroom</SelectItem>
+                          <SelectItem value="2">2 bathrooms</SelectItem>
+                          <SelectItem value="3">3+ bathrooms</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+
+                    {/* International Friendly */}
+                    <div className="flex items-center space-x-2">
+                      <Checkbox
+                        id="intlFriendly"
+                        checked={filters.intlFriendly}
+                        onCheckedChange={(checked) => handleFilterChange('intlFriendly', checked)}
+                      />
+                      <Label htmlFor="intlFriendly" className="text-sm font-medium">
+                        International Student Friendly
+                      </Label>
+                    </div>
+
+                    {/* Filter Actions */}
+                    <div className="space-y-2 pt-4 border-t border-surface-3">
+                      <Button onClick={applyFilters} className="w-full gap-2" variant="accent">
+                        <Search className="h-4 w-4" />
+                        Apply Filters
+                      </Button>
+                      {activeFilterCount > 0 && (
+                        <Button onClick={clearFilters} variant="outline" className="w-full">
+                          Clear All
+                        </Button>
+                      )}
+                    </div>
+                  </CardContent>
+                </CollapsibleContent>
+              </Card>
+            </Collapsible>
+          </div>
+
+          {/* Properties Grid */}
+          <div className="flex-1">
+            {listings.length === 0 ? (
+              <EmptyState
+                icon={<Home className="h-12 w-12" />}
+                title="No properties found"
+                description="Try adjusting your filters or check back later for new listings."
+                action={{
+                  label: "Clear Filters",
+                  onClick: clearFilters
+                }}
+              />
+            ) : (
+              <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
+                {listings.map((listing) => (
+                  <PropertyCard key={listing.id} listing={listing} />
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
