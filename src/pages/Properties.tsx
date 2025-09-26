@@ -40,6 +40,8 @@ export default function Properties() {
       setLoading(true);
       setError(null);
       
+      console.log('🏠 Fetching listings with filters:', filters);
+      
       const apiFilters: any = {};
       if (filters.minPrice) apiFilters.minPrice = parseInt(filters.minPrice);
       if (filters.maxPrice) apiFilters.maxPrice = parseInt(filters.maxPrice);
@@ -48,8 +50,10 @@ export default function Properties() {
       if (filters.intlFriendly) apiFilters.intlFriendly = true;
 
       const data = await listingsAPI.getAll(apiFilters);
+      console.log('🏠 Listings fetched successfully:', data?.length, 'properties');
       setListings(data);
     } catch (err) {
+      console.error('🚨 Failed to fetch listings:', err);
       setError(err instanceof Error ? err.message : "Failed to fetch properties");
     } finally {
       setLoading(false);
@@ -106,9 +110,17 @@ export default function Properties() {
         <div className="container mx-auto px-4 py-8">
           <ErrorState
             title="Failed to load properties"
-            description={error}
+            description={`${error}. Make sure the backend server is running on port 4000.`}
             onRetry={fetchListings}
           />
+          <div className="mt-6 p-4 bg-surface-2 rounded-lg border border-surface-3">
+            <h3 className="font-semibold text-foreground mb-2">Quick Fix:</h3>
+            <div className="text-sm text-muted space-y-1">
+              <p>1. Open a terminal and run: <code className="bg-surface px-2 py-1 rounded">cd server && npm install</code></p>
+              <p>2. Set up the database: <code className="bg-surface px-2 py-1 rounded">npm run prisma:generate && npm run prisma:migrate && npm run prisma:seed</code></p>
+              <p>3. Start the backend: <code className="bg-surface px-2 py-1 rounded">npm run dev</code></p>
+            </div>
+          </div>
         </div>
       </div>
     );

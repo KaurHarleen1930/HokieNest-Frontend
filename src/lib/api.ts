@@ -44,21 +44,34 @@ async function apiRequest<T>(
 ): Promise<T> {
   const token = localStorage.getItem('auth_token');
   
-  const response = await fetch(`${API_BASE_URL}${endpoint}`, {
-    ...options,
-    headers: {
-      'Content-Type': 'application/json',
-      ...(token && { Authorization: `Bearer ${token}` }),
-      ...options.headers,
-    },
-  });
+  const url = `${API_BASE_URL}${endpoint}`;
+  console.log('🔍 API Request:', url);
+  
+  try {
+    const response = await fetch(url, {
+      ...options,
+      headers: {
+        'Content-Type': 'application/json',
+        ...(token && { Authorization: `Bearer ${token}` }),
+        ...options.headers,
+      },
+    });
 
-  if (!response.ok) {
-    const error = await response.json().catch(() => ({}));
-    throw new APIError(response.status, error.message || 'Request failed');
+    console.log('📡 API Response:', response.status, response.statusText);
+
+    if (!response.ok) {
+      const error = await response.json().catch(() => ({}));
+      console.error('❌ API Error:', response.status, error);
+      throw new APIError(response.status, error.message || 'Request failed');
+    }
+
+    const data = await response.json();
+    console.log('✅ API Success:', data);
+    return data;
+  } catch (error) {
+    console.error('🚨 Network Error:', error);
+    throw error;
   }
-
-  return response.json();
 }
 
 // Listings API
