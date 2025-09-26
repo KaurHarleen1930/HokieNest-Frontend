@@ -141,11 +141,11 @@ export default function PropertyDetail() {
               
               {/* Property Features */}
               <div className="flex gap-3 mb-6">
-                <Chip variant="secondary">
+                <Chip variant="muted" size="sm">
                   <Bed className="h-4 w-4" />
                   {listing.beds} bed{listing.beds !== 1 ? 's' : ''}
                 </Chip>
-                <Chip variant="secondary">
+                <Chip variant="muted" size="sm">
                   <Bath className="h-4 w-4" />
                   {listing.baths} bath{listing.baths !== 1 ? 's' : ''}
                 </Chip>

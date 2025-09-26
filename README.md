@@ -64,14 +64,6 @@ Use these pre-configured accounts to test the application:
 - `npm run server:build` - Build the backend for production
 - `npm run server:start` - Start the production backend server
 
-### Testing
-- `npm test` - Run unit tests with Vitest
-- `npm run test:ui` - Run tests with UI interface
-- `npm run test:coverage` - Run tests with coverage report
-- `npm run e2e` - Run end-to-end tests with Playwright
-- `npm run e2e:ui` - Run E2E tests with UI interface
-- `npm run server:test` - Run backend unit tests
-
 ### Production
 - `npm run build` - Build frontend for production
 - `npm run preview` - Preview production build locally
@@ -85,7 +77,6 @@ Use these pre-configured accounts to test the application:
 - **UI Components**: Radix UI with custom variants
 - **State Management**: React Query for server state, Context for auth
 - **Form Handling**: React Hook Form with Zod validation
-- **Testing**: Vitest + React Testing Library + Playwright
 
 ### Backend (Node.js + Express)
 - **Runtime**: Node.js with TypeScript
@@ -93,7 +84,6 @@ Use these pre-configured accounts to test the application:
 - **Database**: SQLite with Prisma ORM
 - **Authentication**: JWT with bcrypt password hashing
 - **Validation**: Zod schema validation
-- **Testing**: Jest with Supertest
 
 ### Security Features
 - VT email validation (@vt.edu required)
