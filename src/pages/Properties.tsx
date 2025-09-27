@@ -27,7 +27,7 @@ export default function Properties() {
   const [listings, setListings] = useState<Listing[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [filtersOpen, setFiltersOpen] = useState(false);
+  const [filtersOpen, setFiltersOpen] = useState(true);
   const [viewMode, setViewMode] = useState<'grid' | 'map'>('grid');
   const [selectedProperty, setSelectedProperty] = useState<Listing | null>(null);
   const [filters, setFilters] = useState<Filters>({
