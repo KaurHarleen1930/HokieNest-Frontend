@@ -34,8 +34,8 @@ export default function Properties() {
   const [filters, setFilters] = useState<Filters>({
     minPrice: "",
     maxPrice: "",
-    beds: "",
-    baths: "",
+    beds: "any",
+    baths: "any",
     intlFriendly: false,
   });
 
@@ -49,8 +49,8 @@ export default function Properties() {
       const apiFilters: any = {};
       if (filters.minPrice) apiFilters.minPrice = parseInt(filters.minPrice);
       if (filters.maxPrice) apiFilters.maxPrice = parseInt(filters.maxPrice);
-      if (filters.beds) apiFilters.beds = parseInt(filters.beds);
-      if (filters.baths) apiFilters.baths = parseInt(filters.baths);
+      if (filters.beds && filters.beds !== "any") apiFilters.beds = parseInt(filters.beds);
+      if (filters.baths && filters.baths !== "any") apiFilters.baths = parseInt(filters.baths);
       if (filters.intlFriendly) apiFilters.intlFriendly = true;
 
       const data = await listingsAPI.getAll(apiFilters);
@@ -77,8 +77,8 @@ export default function Properties() {
     setFilters({
       minPrice: "",
       maxPrice: "",
-      beds: "",
-      baths: "",
+      beds: "any",
+      baths: "any",
       intlFriendly: false,
     });
     // Apply cleared filters immediately
@@ -88,7 +88,7 @@ export default function Properties() {
   };
 
   const activeFilterCount = Object.values(filters).filter(value => 
-    value !== "" && value !== false
+    value !== "" && value !== false && value !== "any"
   ).length;
 
   if (loading) {
@@ -233,7 +233,7 @@ export default function Properties() {
                           <SelectValue placeholder="Any" />
                         </SelectTrigger>
                         <SelectContent>
-                          <SelectItem value="">Any</SelectItem>
+                          <SelectItem value="any">Any</SelectItem>
                           <SelectItem value="1">1 bedroom</SelectItem>
                           <SelectItem value="2">2 bedrooms</SelectItem>
                           <SelectItem value="3">3 bedrooms</SelectItem>
@@ -253,7 +253,7 @@ export default function Properties() {
                           <SelectValue placeholder="Any" />
                         </SelectTrigger>
                         <SelectContent>
-                          <SelectItem value="">Any</SelectItem>
+                          <SelectItem value="any">Any</SelectItem>
                           <SelectItem value="1">1 bathroom</SelectItem>
                           <SelectItem value="2">2 bathrooms</SelectItem>
                           <SelectItem value="3">3+ bathrooms</SelectItem>
