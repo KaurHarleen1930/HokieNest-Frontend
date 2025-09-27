@@ -171,7 +171,11 @@ export default function Properties() {
               <Card className="bg-surface border-surface-3 sticky top-4">
                 <CardHeader className="pb-3">
                   <CollapsibleTrigger asChild>
-                    <Button variant="ghost" className="w-full justify-between p-0 h-auto">
+                    <Button 
+                      type="button"
+                      variant="ghost" 
+                      className="w-full justify-between p-0 h-auto"
+                    >
                       <CardTitle className="flex items-center gap-2 text-lg">
                         <Filter className="h-5 w-5" />
                         Filters
