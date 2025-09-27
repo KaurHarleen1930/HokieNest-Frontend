@@ -65,15 +65,12 @@ export default function Properties() {
 
   useEffect(() => {
     fetchListings();
-  }, []);
+  }, [filters]); // Auto-apply filters when they change
 
   const handleFilterChange = (key: keyof Filters, value: any) => {
     setFilters(prev => ({ ...prev, [key]: value }));
   };
 
-  const applyFilters = () => {
-    fetchListings();
-  };
 
   const clearFilters = () => {
     setFilters({
@@ -272,17 +269,13 @@ export default function Properties() {
                     </div>
 
                     {/* Filter Actions */}
-                    <div className="space-y-2 pt-4 border-t border-surface-3">
-                      <Button onClick={applyFilters} className="w-full gap-2" variant="accent">
-                        <Search className="h-4 w-4" />
-                        Apply Filters
-                      </Button>
-                      {activeFilterCount > 0 && (
+                    {activeFilterCount > 0 && (
+                      <div className="pt-4 border-t border-surface-3">
                         <Button onClick={clearFilters} variant="outline" className="w-full">
-                          Clear All
+                          Clear All Filters
                         </Button>
-                      )}
-                    </div>
+                      </div>
+                    )}
                   </CardContent>
                 </CollapsibleContent>
               </Card>
