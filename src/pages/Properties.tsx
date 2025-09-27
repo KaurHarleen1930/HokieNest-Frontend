@@ -24,6 +24,7 @@ interface Filters {
 }
 
 export default function Properties() {
+  console.log('🏠 Properties component is rendering');
   const [listings, setListings] = useState<Listing[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
