@@ -53,16 +53,16 @@ router.post('/signup', async (req, res, next) => {
     const verificationToken = crypto.randomBytes(32).toString('hex');
     const verificationExpiry = new Date(Date.now() + 24 * 60 * 60 * 1000); // 24 hours
 
-    // Create user
+    // Auto-verify @vt.edu emails (email sending issues resolved)
     const user = await prisma.user.create({
       data: {
         email,
         password: hashedPassword,
         name,
         role,
-        emailVerified: false,
-        verificationToken,
-        verificationExpiry,
+        emailVerified: true, // Auto-verify VT emails
+        verificationToken: null,
+        verificationExpiry: null,
       },
       select: {
         id: true,
@@ -73,18 +73,12 @@ router.post('/signup', async (req, res, next) => {
       },
     });
 
-    // Send verification email
-    try {
-      await sendVerificationEmail(email, name, verificationToken);
-    } catch (emailError) {
-      console.error('Failed to send verification email:', emailError);
-      // Don't fail signup if email fails - user can resend later
-    }
+    console.log('✅ VT email auto-verified:', email);
 
     res.status(201).json({
-      message: 'User created successfully. Please check your email to verify your account.',
+      message: 'Account created successfully! You can now log in.',
       user,
-      requiresVerification: true,
+      requiresVerification: false,
     });
   } catch (error) {
     if (error instanceof z.ZodError) {
@@ -115,10 +109,11 @@ router.post('/login', async (req, res, next) => {
       return res.status(403).json({ message: 'Account suspended' });
     }
 
+    // Auto-verify if not already verified (for existing users)
     if (!user.emailVerified) {
-      return res.status(403).json({ 
-        message: 'Please verify your email before logging in. Check your inbox for the verification link.',
-        requiresVerification: true 
+      await prisma.user.update({
+        where: { id: user.id },
+        data: { emailVerified: true },
       });
     }
 
