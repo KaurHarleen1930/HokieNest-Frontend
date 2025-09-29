@@ -9,6 +9,7 @@ import { Navbar } from "@/components/Navbar";
 import Home from "./pages/Home";
 import Login from "./pages/Login";
 import Signup from "./pages/Signup";
+import VerifyEmail from "./pages/VerifyEmail";
 import Dashboard from "./pages/Dashboard";
 import Properties from "./pages/Properties";
 import PropertyDetail from "./pages/PropertyDetail";
@@ -30,6 +31,7 @@ const App = () => (
               <Route path="/" element={<Home />} />
               <Route path="/login" element={<Login />} />
               <Route path="/signup" element={<Signup />} />
+              <Route path="/verify-email" element={<VerifyEmail />} />
               <Route path="/properties" element={<Properties />} />
               <Route path="/properties/:id" element={<PropertyDetail />} />
               <Route path="/dashboard" element={

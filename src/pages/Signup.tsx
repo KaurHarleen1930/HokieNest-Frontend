@@ -6,7 +6,8 @@ import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { useAuth } from "@/lib/auth";
-import { Home, AlertCircle, Eye, EyeOff, CheckCircle } from "lucide-react";
+import { Home, AlertCircle, Eye, EyeOff, CheckCircle, Mail } from "lucide-react";
+import { toast } from "sonner";
 
 export default function Signup() {
   const [name, setName] = useState("");
@@ -39,8 +40,18 @@ export default function Signup() {
     }
 
     try {
-      await signup(email, password, name);
-      navigate("/dashboard");
+      const result = await signup(email, password, name);
+      if (result?.requiresVerification) {
+        toast.success("Account created! Check your VT email for verification link.", {
+          description: "Please verify your email before logging in.",
+          icon: <Mail className="h-4 w-4" />,
+          duration: 6000,
+        });
+        navigate("/login");
+      } else {
+        toast.success("Account created successfully!");
+        navigate("/dashboard");
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : "Signup failed");
     } finally {

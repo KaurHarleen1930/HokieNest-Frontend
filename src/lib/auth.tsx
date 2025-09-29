@@ -12,7 +12,7 @@ interface AuthContextType {
   token: string | null;
   login: (email: string, password: string) => Promise<void>;
   logout: () => void;
-  signup: (email: string, password: string, name: string) => Promise<void>;
+  signup: (email: string, password: string, name: string) => Promise<any>;
   loading: boolean;
   isAuthenticated: boolean;
 }
@@ -107,11 +107,21 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         throw new Error(error.message || 'Signup failed');
       }
 
-      const { token: newToken, user: userData } = await response.json();
+      const data = await response.json();
       
-      localStorage.setItem('auth_token', newToken);
-      setToken(newToken);
-      setUser(userData);
+      // If email verification is required, don't set token/user
+      if (data.requiresVerification) {
+        return data;
+      }
+      
+      // Otherwise, log them in immediately
+      if (data.token) {
+        localStorage.setItem('auth_token', data.token);
+        setToken(data.token);
+        setUser(data.user);
+      }
+      
+      return data;
     } catch (error) {
       throw error;
     } finally {

@@ -6,8 +6,9 @@ import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { useAuth } from "@/lib/auth";
-import { Home, AlertCircle, Eye, EyeOff } from "lucide-react";
+import { Home, AlertCircle, Eye, EyeOff, Mail } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
+import { toast } from "sonner";
 
 export default function Login() {
   const [email, setEmail] = useState("");
@@ -15,6 +16,8 @@ export default function Login() {
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState("");
   const [isLoading, setIsLoading] = useState(false);
+  const [showResendVerification, setShowResendVerification] = useState(false);
+  const [isResending, setIsResending] = useState(false);
   
   const { login } = useAuth();
   const navigate = useNavigate();
@@ -38,7 +41,13 @@ export default function Login() {
       await login(email, password);
       navigate(from, { replace: true });
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Login failed");
+      const errorMessage = err instanceof Error ? err.message : "Login failed";
+      setError(errorMessage);
+      
+      // Show resend button if email is not verified
+      if (errorMessage.toLowerCase().includes('verify')) {
+        setShowResendVerification(true);
+      }
     } finally {
       setIsLoading(false);
     }
@@ -53,6 +62,38 @@ export default function Login() {
   const fillDemo = (email: string, password: string) => {
     setEmail(email);
     setPassword(password);
+  };
+
+  const handleResendVerification = async () => {
+    if (!email) {
+      toast.error("Please enter your email address");
+      return;
+    }
+
+    setIsResending(true);
+    try {
+      const response = await fetch('http://localhost:4000/api/auth/resend-verification', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email }),
+      });
+
+      const data = await response.json();
+
+      if (response.ok) {
+        toast.success("Verification email sent!", {
+          description: "Please check your VT email inbox.",
+          icon: <Mail className="h-4 w-4" />,
+        });
+        setShowResendVerification(false);
+      } else {
+        toast.error(data.message || "Failed to send verification email");
+      }
+    } catch (error) {
+      toast.error("An error occurred. Please try again.");
+    } finally {
+      setIsResending(false);
+    }
   };
 
   return (
@@ -142,10 +183,24 @@ export default function Login() {
               </div>
 
               {error && (
-                <Alert variant="destructive">
-                  <AlertCircle className="h-4 w-4" />
-                  <AlertDescription>{error}</AlertDescription>
-                </Alert>
+                <div className="space-y-2">
+                  <Alert variant="destructive">
+                    <AlertCircle className="h-4 w-4" />
+                    <AlertDescription>{error}</AlertDescription>
+                  </Alert>
+                  {showResendVerification && (
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={handleResendVerification}
+                      disabled={isResending}
+                      className="w-full"
+                    >
+                      {isResending ? "Sending..." : "Resend Verification Email"}
+                    </Button>
+                  )}
+                </div>
               )}
 
               <Button 
