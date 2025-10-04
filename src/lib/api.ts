@@ -1,3 +1,5 @@
+import { supabase } from "./supabase";
+
 const API_BASE_URL = '/api/v1';
 
 interface ListingFilters {
@@ -76,23 +78,70 @@ async function apiRequest<T>(
 
 // Listings API
 export const listingsAPI = {
-  getAll: (filters?: ListingFilters): Promise<Listing[]> => {
-    const searchParams = new URLSearchParams();
-    
-    if (filters?.minPrice) searchParams.set('minPrice', filters.minPrice.toString());
-    if (filters?.maxPrice) searchParams.set('maxPrice', filters.maxPrice.toString());
-    if (filters?.beds) searchParams.set('beds', filters.beds.toString());
-    if (filters?.baths) searchParams.set('baths', filters.baths.toString());
-    if (filters?.intlFriendly !== undefined) searchParams.set('intlFriendly', filters.intlFriendly.toString());
+  getAll: async (filters?: ListingFilters): Promise<Listing[]> => {
+    let q = supabase
+      .from("apartment_properties_listings")
+      .select("*")
+      .eq("is_active", true);
 
-    const query = searchParams.toString();
-    return apiRequest<Listing[]>(`/listings${query ? `?${query}` : ''}`);
+    if (filters?.minPrice !== undefined) q = q.gte("price", filters.minPrice);
+    if (filters?.maxPrice !== undefined) q = q.lte("price", filters.maxPrice);
+    if (filters?.beds !== undefined)     q = q.eq("beds",  filters.beds);
+    if (filters?.baths !== undefined)    q = q.eq("baths", filters.baths);
+    if (filters?.intlFriendly === true)  q = q.eq("intl_friendly", true);
+
+    const { data, error } = await q;
+    if (error) throw error;
+
+    return (data ?? []).map((row: any): Listing => ({
+      id: row.id,
+      title: row.name ?? "Property",
+      price: Number(row.price ?? 0),
+      address: row.address ?? "",
+      beds: Number(row.beds ?? 0),
+      baths: Number(row.baths ?? 0),
+      intlFriendly: Boolean(row.intl_friendly ?? false),
+      imageUrl:
+        row.thumbnail_url ??
+        (Array.isArray(row.photos) ? row.photos[0] : "") ??
+        "",
+      description: row.description ?? undefined,
+      amenities: Array.isArray(row.amenities) ? row.amenities : undefined,
+      contactEmail: row.email ?? undefined,
+      contactPhone: row.phone_number ?? undefined,
+    }));
   },
 
-  getById: (id: string): Promise<Listing> => {
-    return apiRequest<Listing>(`/listings/${id}`);
+  getById: async (id: string): Promise<Listing> => {
+    const { data, error } = await supabase
+      .from("apartment_properties_listings")
+      .select("*")
+      .eq("id", id)
+      .single();
+
+    if (error) throw error;
+    const row: any = data;
+
+    return {
+      id: row.id,
+      title: row.name ?? "Property",
+      price: Number(row.price ?? 0),
+      address: row.address ?? "",
+      beds: Number(row.beds ?? 0),
+      baths: Number(row.baths ?? 0),
+      intlFriendly: Boolean(row.intl_friendly ?? false),
+      imageUrl:
+        row.thumbnail_url ??
+        (Array.isArray(row.photos) ? row.photos[0] : "") ??
+        "",
+      description: row.description ?? undefined,
+      amenities: Array.isArray(row.amenities) ? row.amenities : undefined,
+      contactEmail: row.email ?? undefined,
+      contactPhone: row.phone_number ?? undefined,
+    };
   },
 };
+
 
 // Users API (Admin)
 export const usersAPI = {
