@@ -36,6 +36,26 @@ type Stats = {
   maxBaths: number | null;
 };
 
+// --- Helper: fetch apartment_units in chunks to avoid huge IN() queries ---
+async function fetchUnitsForProperties(ids: string[]) {
+  const CHUNK_SIZE = 150; // tune as needed
+  const all: any[] = [];
+
+  for (let i = 0; i < ids.length; i += CHUNK_SIZE) {
+    const slice = ids.slice(i, i + CHUNK_SIZE);
+
+    const { data, error } = await supabase
+      .from("apartment_units")
+      .select("property_id, rent_min, rent_max, beds, baths")
+      .in("property_id", slice);
+
+    if (error) throw error;
+    if (data) all.push(...data);
+  }
+
+  return all;
+}
+
 export default function Properties() {
   const [allListings, setAllListings] = useState<Listing[]>([]);
   const [loading, setLoading] = useState(true);
@@ -70,14 +90,10 @@ export default function Properties() {
         setAllListings(data);
 
         // 2) Load units for these properties from Supabase and compute stats
-        const ids = data.map((l: any) => l.id);
-        if (ids.length) {
-          const { data: units, error: uErr } = await supabase
-            .from("apartment_units")
-            .select("property_id, rent_min, rent_max, beds, baths")
-            .in("property_id", ids);
+        const ids = data.map((l: any) => l.id) as string[];
 
-          if (uErr) throw uErr;
+        if (ids.length) {
+          const units = await fetchUnitsForProperties(ids);
 
           const byProp = new Map<string, Stats>();
           for (const u of units ?? []) {
