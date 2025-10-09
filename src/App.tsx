@@ -16,6 +16,7 @@ import Properties from "./pages/Properties";
 import PropertyDetail from "./pages/PropertyDetail";
 import Admin from "./pages/Admin";
 import NotFound from "./pages/NotFound";
+import ListingsDebug from "./pages/ListingsDebug"; 
 
 const queryClient = new QueryClient();
 
@@ -34,6 +35,7 @@ const App = () => (
               <Route path="/signup" element={<Signup />} />
               <Route path="/verify-email" element={<VerifyEmail />} />
               <Route path="/properties" element={<Properties />} />
+              <Route path="/__debug/listings" element={<ListingsDebug />} /> {/* 👈 add this */}
               <Route path="/properties/:id" element={<PropertyDetail />} />
               <Route path="/profile" element={
                 <ProtectedRoute>
