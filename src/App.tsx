@@ -9,6 +9,8 @@ import { Navbar } from "@/components/Navbar";
 import Home from "./pages/Home";
 import Login from "./pages/Login";
 import Signup from "./pages/Signup";
+import ForgotPassword from "./pages/ForgotPassword";
+import ResetPassword from "./pages/ResetPassword";
 import VerifyEmail from "./pages/VerifyEmail";
 import Profile from "./pages/Profile";
 import Dashboard from "./pages/Dashboard";
@@ -16,7 +18,7 @@ import Properties from "./pages/Properties";
 import PropertyDetail from "./pages/PropertyDetail";
 import Admin from "./pages/Admin";
 import NotFound from "./pages/NotFound";
-import ListingsDebug from "./pages/ListingsDebug"; 
+import ListingsDebug from "./pages/ListingsDebug";
 
 const queryClient = new QueryClient();
 
@@ -33,6 +35,8 @@ const App = () => (
               <Route path="/" element={<Home />} />
               <Route path="/login" element={<Login />} />
               <Route path="/signup" element={<Signup />} />
+              <Route path="/forgot-password" element={<ForgotPassword />} />
+              <Route path="/reset-password" element={<ResetPassword />} />
               <Route path="/verify-email" element={<VerifyEmail />} />
               <Route path="/properties" element={<Properties />} />
               <Route path="/__debug/listings" element={<ListingsDebug />} /> {/* 👈 add this */}

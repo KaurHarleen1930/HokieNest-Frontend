@@ -5,7 +5,7 @@ import { componentTagger } from "lovable-tagger";
 
 export default defineConfig(({ mode }) => {
   // Force-load .env files for this mode
-  const env = loadEnv(mode, process.cwd(), ""); 
+  const env = loadEnv(mode, process.cwd(), "");
 
   console.log("[vite] loaded env:", {
     VITE_SUPABASE_URL: env.VITE_SUPABASE_URL,
@@ -14,10 +14,10 @@ export default defineConfig(({ mode }) => {
   });
 
   return {
-    envPrefix: "VITE_", 
+    envPrefix: "VITE_",
     server: {
       host: "localhost",
-      port: 5173,
+      port: 8080,
       proxy: {
         "/api": {
           target: "http://localhost:4000",

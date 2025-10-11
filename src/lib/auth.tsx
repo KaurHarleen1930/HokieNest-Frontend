@@ -11,6 +11,7 @@ interface AuthContextType {
   user: User | null;
   token: string | null;
   login: (email: string, password: string) => Promise<void>;
+  loginWithGoogle: () => void;
   logout: () => void;
   signup: (email: string, password: string, name: string) => Promise<any>;
   loading: boolean;
@@ -35,6 +36,32 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setLoading(false);
     }
   }, [token]);
+
+  // Handle OAuth callback
+  useEffect(() => {
+    const urlParams = new URLSearchParams(window.location.search);
+    const tokenParam = urlParams.get('token');
+    const userParam = urlParams.get('user');
+    const errorParam = urlParams.get('error');
+
+    if (tokenParam && userParam) {
+      try {
+        const userData = JSON.parse(decodeURIComponent(userParam));
+        localStorage.setItem('auth_token', tokenParam);
+        setToken(tokenParam);
+        setUser(userData);
+
+        // Clean up URL parameters
+        window.history.replaceState({}, document.title, window.location.pathname);
+      } catch (error) {
+        console.error('Failed to parse OAuth callback data:', error);
+      }
+    } else if (errorParam) {
+      console.error('OAuth error:', errorParam);
+      // Clean up URL parameters
+      window.history.replaceState({}, document.title, window.location.pathname);
+    }
+  }, []);
 
   const fetchCurrentUser = async () => {
     try {
@@ -80,7 +107,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
 
       const { token: newToken, user: userData } = await response.json();
-      
+
       localStorage.setItem('auth_token', newToken);
       setToken(newToken);
       setUser(userData);
@@ -108,19 +135,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
 
       const data = await response.json();
-      
+
       // If email verification is required, don't set token/user
       if (data.requiresVerification) {
         return data;
       }
-      
+
       // Otherwise, log them in immediately
       if (data.token) {
         localStorage.setItem('auth_token', data.token);
         setToken(data.token);
         setUser(data.user);
       }
-      
+
       return data;
     } catch (error) {
       throw error;
@@ -129,10 +156,31 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   };
 
-  const logout = () => {
-    localStorage.removeItem('auth_token');
-    setToken(null);
-    setUser(null);
+  const loginWithGoogle = () => {
+    // Redirect to Google OAuth
+    window.location.href = `${API_BASE_URL}/auth/google`;
+  };
+
+  const logout = async () => {
+    try {
+      // Call backend logout endpoint to clear server-side session
+      if (token) {
+        await fetch(`${API_BASE_URL}/auth/logout`, {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${token}`,
+          },
+        });
+      }
+    } catch (error) {
+      console.error('Backend logout failed:', error);
+      // Continue with frontend logout even if backend fails
+    } finally {
+      // Always clear frontend state
+      localStorage.removeItem('auth_token');
+      setToken(null);
+      setUser(null);
+    }
   };
 
   return (
@@ -140,6 +188,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       user,
       token,
       login,
+      loginWithGoogle,
       logout,
       signup,
       loading,

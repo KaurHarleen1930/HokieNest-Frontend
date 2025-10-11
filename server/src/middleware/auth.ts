@@ -1,8 +1,6 @@
 import { Request, Response, NextFunction } from 'express';
 import jwt from 'jsonwebtoken';
-import { PrismaClient } from '@prisma/client';
-
-const prisma = new PrismaClient();
+import { supabase } from '../lib/supabase';
 
 export interface AuthRequest extends Request {
   user?: {
@@ -23,21 +21,26 @@ export const authenticateToken = async (req: AuthRequest, res: Response, next: N
 
   try {
     const decoded = jwt.verify(token, process.env.JWT_SECRET!) as { userId: string };
-    
-    const user = await prisma.user.findUnique({
-      where: { id: decoded.userId },
-      select: { id: true, email: true, name: true, role: true, suspended: true },
-    });
+
+    const { data: user } = await supabase
+      .from('users')
+      .select('user_id, email, first_name, last_name, is_admin')
+      .eq('user_id', decoded.userId)
+      .single();
 
     if (!user) {
       return res.status(401).json({ message: 'Invalid token' });
     }
 
-    if (user.suspended) {
-      return res.status(403).json({ message: 'Account suspended' });
-    }
+    // Format user for the application
+    const formattedUser = {
+      id: user.user_id.toString(),
+      email: user.email,
+      name: `${user.first_name || ''} ${user.last_name || ''}`.trim() || 'User',
+      role: user.is_admin ? 'admin' : 'student'
+    };
 
-    req.user = user;
+    req.user = formattedUser;
     next();
   } catch (error) {
     return res.status(403).json({ message: 'Invalid token' });
