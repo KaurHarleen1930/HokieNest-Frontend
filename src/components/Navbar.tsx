@@ -16,8 +16,8 @@ export function Navbar() {
   const { user, logout, isAuthenticated } = useAuth();
   const navigate = useNavigate();
 
-  const handleLogout = () => {
-    logout();
+  const handleLogout = async () => {
+    await logout();
     navigate('/');
   };
 
@@ -32,15 +32,15 @@ export function Navbar() {
 
         {/* Navigation Links */}
         <div className="hidden md:flex items-center gap-6">
-          <Link 
-            to="/properties" 
+          <Link
+            to="/properties"
             className="text-foreground hover:text-accent transition-colors font-medium"
           >
             Properties
           </Link>
           {isAuthenticated && (
-            <Link 
-              to="/dashboard" 
+            <Link
+              to="/dashboard"
               className="text-foreground hover:text-accent transition-colors font-medium"
             >
               Dashboard
@@ -100,14 +100,14 @@ export function Navbar() {
             </DropdownMenu>
           ) : (
             <div className="flex gap-2">
-              <Button 
-                variant="ghost" 
+              <Button
+                variant="ghost"
                 onClick={() => navigate('/login')}
               >
                 Sign In
               </Button>
-              <Button 
-                variant="accent" 
+              <Button
+                variant="accent"
                 onClick={() => navigate('/signup')}
               >
                 Sign Up

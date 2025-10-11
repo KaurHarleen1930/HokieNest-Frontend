@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useNavigate, useLocation, Link } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -18,12 +18,26 @@ export default function Login() {
   const [isLoading, setIsLoading] = useState(false);
   const [showResendVerification, setShowResendVerification] = useState(false);
   const [isResending, setIsResending] = useState(false);
-  
+
   const { login } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
-  
+
   const from = (location.state as any)?.from?.pathname || "/dashboard";
+
+  // Handle OAuth error messages
+  useEffect(() => {
+    const urlParams = new URLSearchParams(window.location.search);
+    const errorParam = urlParams.get('error');
+
+    if (errorParam === 'vt_email_required') {
+      setError('Only Virginia Tech (@vt.edu) email addresses are allowed');
+    } else if (errorParam === 'oauth_failed') {
+      setError('Google authentication failed. Please try again.');
+    } else if (errorParam === 'no_user') {
+      setError('Authentication failed. Please try again.');
+    }
+  }, []);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -43,7 +57,7 @@ export default function Login() {
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : "Login failed";
       setError(errorMessage);
-      
+
       // Show resend button if email is not verified
       if (errorMessage.toLowerCase().includes('verify')) {
         setShowResendVerification(true);
@@ -203,15 +217,21 @@ export default function Login() {
                 </div>
               )}
 
-              <Button 
-                type="submit" 
-                className="w-full" 
+              <Button
+                type="submit"
+                className="w-full"
                 disabled={isLoading || !email || !password}
                 variant="accent"
               >
                 {isLoading ? "Signing in..." : "Sign In"}
               </Button>
             </form>
+
+            <div className="mt-4 text-center">
+              <Link to="/forgot-password" className="text-sm text-accent hover:underline">
+                Forgot your password?
+              </Link>
+            </div>
 
             <div className="mt-6 text-center">
               <p className="text-sm text-muted">

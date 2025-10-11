@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useNavigate, Link } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -8,6 +8,7 @@ import { Alert, AlertDescription } from "@/components/ui/alert";
 import { useAuth } from "@/lib/auth";
 import { Home, AlertCircle, Eye, EyeOff, CheckCircle, Mail } from "lucide-react";
 import { toast } from "sonner";
+import { Separator } from "@/components/ui/separator";
 
 export default function Signup() {
   const [name, setName] = useState("");
@@ -16,9 +17,51 @@ export default function Signup() {
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState("");
   const [isLoading, setIsLoading] = useState(false);
-  
-  const { signup } = useAuth();
+
+  const { signup, loginWithGoogle } = useAuth();
   const navigate = useNavigate();
+
+  // Handle OAuth callback from Google verification
+  useEffect(() => {
+    const urlParams = new URLSearchParams(window.location.search);
+    const tokenParam = urlParams.get('token');
+    const userParam = urlParams.get('user');
+    const errorParam = urlParams.get('error');
+
+    if (tokenParam && userParam) {
+      // User completed Google OAuth successfully, now complete signup
+      const signupData = localStorage.getItem('signupData');
+      if (signupData) {
+        const { email, password, name } = JSON.parse(signupData);
+        completeSignupAfterOAuth(email, password, name);
+        localStorage.removeItem('signupData');
+      }
+
+      // Clean up URL parameters
+      window.history.replaceState({}, document.title, window.location.pathname);
+    } else if (errorParam) {
+      if (errorParam === 'vt_email_required') {
+        setError('Only Virginia Tech (@vt.edu) email addresses are allowed');
+      } else if (errorParam === 'oauth_failed') {
+        setError('Google authentication failed. Please try again.');
+      }
+      setIsLoading(false);
+      // Clean up URL parameters
+      window.history.replaceState({}, document.title, window.location.pathname);
+    }
+  }, []);
+
+  const completeSignupAfterOAuth = async (email: string, password: string, name: string) => {
+    try {
+      const result = await signup(email, password, name);
+      toast.success("Account created successfully!");
+      navigate("/login");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Signup failed");
+    } finally {
+      setIsLoading(false);
+    }
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -40,21 +83,17 @@ export default function Signup() {
     }
 
     try {
-      const result = await signup(email, password, name);
-      if (result?.requiresVerification) {
-        toast.success("Account created! Check your VT email for verification link.", {
-          description: "Please verify your email before logging in.",
-          icon: <Mail className="h-4 w-4" />,
-          duration: 6000,
-        });
-        navigate("/login");
-      } else {
-        toast.success("Account created successfully!");
-        navigate("/dashboard");
-      }
+      // Store form data temporarily in localStorage for after OAuth
+      localStorage.setItem('signupData', JSON.stringify({
+        email,
+        password,
+        name
+      }));
+
+      // Trigger Google OAuth to verify VT.edu email
+      await loginWithGoogle();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Signup failed");
-    } finally {
       setIsLoading(false);
     }
   };
@@ -80,7 +119,7 @@ export default function Signup() {
           <CardHeader>
             <CardTitle>Sign Up</CardTitle>
             <CardDescription>
-              Join the HokieNest community with your Virginia Tech email
+              Verify your VT.edu email with Google, then create your account
             </CardDescription>
           </CardHeader>
           <CardContent>
@@ -161,13 +200,13 @@ export default function Signup() {
                 </Alert>
               )}
 
-              <Button 
-                type="submit" 
-                className="w-full" 
+              <Button
+                type="submit"
+                className="w-full"
                 disabled={isLoading || !isFormValid}
                 variant="accent"
               >
-                {isLoading ? "Creating account..." : "Sign Up"}
+                {isLoading ? "Creating account..." : "Complete Sign Up"}
               </Button>
             </form>
 
