@@ -19,7 +19,7 @@ export default defineConfig(({ mode }) => {
       host: "localhost",
       port: 8080,
       proxy: {
-        "/api": {
+        "/api/v1": {
           target: "http://localhost:4000",
           changeOrigin: true,
           secure: false,
