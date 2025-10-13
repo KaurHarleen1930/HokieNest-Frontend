@@ -107,6 +107,40 @@ export default function Home() {
         </div>
       </section>
 
+      {/* Roommate Matching CTA Section */}
+      <section className="py-20 bg-surface">
+        <div className="container mx-auto px-4">
+          <div className="max-w-3xl mx-auto text-center">
+            <div className="mb-6">
+              <span className="text-5xl">🎯</span>
+            </div>
+            <h2 className="text-3xl font-bold text-primary mb-4">
+              Let's find your ideal roommate!
+            </h2>
+            <p className="text-muted text-lg mb-8 leading-relaxed">
+              We'll ask a few quick questions about your lifestyle and housing preferences. 
+              This helps us match you with compatible roommates who share your values.
+            </p>
+            <div className="flex flex-col sm:flex-row gap-4 justify-center">
+              <Button 
+                size="lg" 
+                onClick={() => navigate('/roommate-questionnaire')}
+                className="gap-2"
+              >
+                Start Questionnaire
+              </Button>
+              <Button 
+                size="lg" 
+                variant="outline"
+                onClick={() => navigate(isAuthenticated ? '/dashboard' : '/properties')}
+              >
+                Skip for now → {isAuthenticated ? 'Go to Dashboard' : 'Browse Properties'}
+              </Button>
+            </div>
+          </div>
+        </div>
+      </section>
+
       {/* CTA Section */}
       <section className="py-20">
         <div className="container mx-auto px-4 text-center">
