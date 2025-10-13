@@ -37,8 +37,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   }, [token]);
 
-  // Handle OAuth callback
+  // Handle OAuth callback (skip on signup page so it can complete account creation)
   useEffect(() => {
+    const pathname = window.location.pathname;
+    if (pathname === '/signup') return;
+
     const urlParams = new URLSearchParams(window.location.search);
     const tokenParam = urlParams.get('token');
     const userParam = urlParams.get('user');
