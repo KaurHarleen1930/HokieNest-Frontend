@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Slider } from "@/components/ui/slider";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
@@ -53,6 +53,7 @@ export default function RoommateQuestionnaire() {
   const { toast } = useToast();
   const { isAuthenticated, token } = useAuth();
   const [currentStep, setCurrentStep] = useState(1);
+  const [loading, setLoading] = useState(true);
   const [preferences, setPreferences] = useState<RoommatePreferences>(
     () => {
       const saved = localStorage.getItem("roommatePreferences");
@@ -62,6 +63,53 @@ export default function RoommateQuestionnaire() {
 
   const totalSteps = 10;
   const progress = (currentStep / totalSteps) * 100;
+
+  // Check if user already has a profile in the database
+  useEffect(() => {
+    const checkExistingProfile = async () => {
+      // Check if this is a restart request
+      const urlParams = new URLSearchParams(window.location.search);
+      const isRestart = urlParams.get('restart') === 'true';
+      
+      if (!isAuthenticated || !token) {
+        setLoading(false);
+        return;
+      }
+
+      // Skip profile check if restart is requested
+      if (isRestart) {
+        setLoading(false);
+        // Clear the restart parameter from URL
+        window.history.replaceState({}, document.title, window.location.pathname);
+        return;
+      }
+
+      try {
+        const data = await preferencesAPI.getPreferences();
+        
+        // If user has both housing and lifestyle preferences, redirect to profile page
+        if (data.housing && data.lifestyle) {
+          toast({
+            title: "Profile Found",
+            description: "You already have a roommate profile. Redirecting to your profile page.",
+          });
+          
+          // Small delay to show the toast message
+          setTimeout(() => {
+            navigate("/roommate-profile");
+          }, 1500);
+          return;
+        }
+      } catch (error) {
+        console.error("Failed to check existing profile:", error);
+        // Continue with questionnaire if check fails
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    checkExistingProfile();
+  }, [isAuthenticated, token, navigate, toast]);
 
   const handleNext = () => {
     if (currentStep < totalSteps) {
@@ -120,6 +168,21 @@ export default function RoommateQuestionnaire() {
       : [...currentArray, value];
     updatePreference(key, newArray);
   };
+
+  // Show loading screen while checking for existing profile
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary mx-auto mb-4"></div>
+          <h2 className="text-2xl font-bold text-primary mb-2">Checking Profile</h2>
+          <p className="text-muted">
+            Checking if you already have a roommate profile...
+          </p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-background py-8">

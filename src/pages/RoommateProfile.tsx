@@ -170,9 +170,18 @@ export default function RoommateProfile() {
           <p className="text-muted mb-6">
             You haven't completed the roommate questionnaire yet.
           </p>
-          <Button onClick={() => navigate("/roommate-questionnaire")}>
-            Start Questionnaire
-          </Button>
+          <div className="space-y-3">
+            <Button onClick={() => navigate("/roommate-questionnaire")} className="w-full">
+              Start Questionnaire
+            </Button>
+            <Button 
+              variant="outline" 
+              onClick={() => navigate("/roommate-questionnaire?restart=true")} 
+              className="w-full"
+            >
+              Start Fresh Questionnaire
+            </Button>
+          </div>
         </Card>
       </div>
     );
@@ -302,10 +311,20 @@ export default function RoommateProfile() {
                 </Button>
               </div>
             ) : (
-              <Button onClick={() => setIsEditing(true)} className="gap-2">
-                <Edit className="h-4 w-4" />
-                Edit Profile
-              </Button>
+              <div className="flex gap-3">
+                <Button onClick={() => setIsEditing(true)} className="gap-2">
+                  <Edit className="h-4 w-4" />
+                  Edit Profile
+                </Button>
+                <Button 
+                  variant="outline" 
+                  onClick={() => navigate("/roommate-questionnaire?restart=true")} 
+                  className="gap-2"
+                >
+                  <Edit className="h-4 w-4" />
+                  Start Fresh
+                </Button>
+              </div>
             )}
           </div>
         </div>
