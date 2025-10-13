@@ -426,7 +426,9 @@ router.get('/google/callback',
 
       const needsSignup = !dbUser?.password_hash;
 
-      const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:5174';
+      // Normalize frontend URL to avoid double slashes
+      const rawFrontendUrl = process.env.FRONTEND_URL || 'http://localhost:5174';
+      const frontendUrl = rawFrontendUrl.replace(/\/$/, '');
 
       if (needsSignup) {
         // Redirect to signup page to complete registration with OAuth success
@@ -444,7 +446,8 @@ router.get('/google/callback',
 
 // Google OAuth error handler
 router.get('/google/error', (req, res) => {
-  const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:5174';
+  const rawFrontendUrl = process.env.FRONTEND_URL || 'http://localhost:5174';
+  const frontendUrl = rawFrontendUrl.replace(/\/$/, '');
   res.redirect(`${frontendUrl}/login?error=vt_email_required`);
 });
 

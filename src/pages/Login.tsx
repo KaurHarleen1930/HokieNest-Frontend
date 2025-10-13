@@ -25,10 +25,27 @@ export default function Login() {
 
   const from = (location.state as any)?.from?.pathname || "/dashboard";
 
-  // Handle OAuth error messages
-  useEffect(() => {
+  // Handle OAuth success/error redirects
+  useEffect(() => {                                                                     
     const urlParams = new URLSearchParams(window.location.search);
+    const tokenParam = urlParams.get('token');
+    const userParam = urlParams.get('user');
     const errorParam = urlParams.get('error');
+
+    // Successful OAuth login redirect from backend
+    if (tokenParam && userParam) {
+      try {
+        const userData = JSON.parse(decodeURIComponent(userParam));
+        localStorage.setItem('auth_token', tokenParam);
+        // Optionally we could call fetchCurrentUser, but navigate is fine since AuthProvider will pick up token
+        navigate(from, { replace: true });
+        // Clean up URL params
+        window.history.replaceState({}, document.title, window.location.pathname);
+        return;
+      } catch (e) {
+        // fallthrough to error handling
+      }
+    }
 
     if (errorParam === 'vt_email_required') {
       setError('Only Virginia Tech (@vt.edu) email addresses are allowed');
