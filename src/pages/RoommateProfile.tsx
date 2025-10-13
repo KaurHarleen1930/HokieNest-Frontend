@@ -63,23 +63,23 @@ export default function RoommateProfile() {
           const convertedPreferences: RoommatePreferences = {
             budgetRange: [data.housing.budget_min, data.housing.budget_max],
             moveInDate: data.housing.move_in_date ? data.housing.move_in_date.substring(0, 7) : "", // Convert YYYY-MM-DD to YYYY-MM
-            leaseLength: [], // This field isn't in the database yet
-            maxDistance: "", // This field isn't in the database yet
-            quietHoursStart: "22:00", // Default values for fields not in database
-            quietHoursEnd: "07:00",
+            leaseLength: data.housing.lease_length || [],
+            maxDistance: data.housing.max_distance || "",
+            quietHoursStart: data.housing.quiet_hours_start || "22:00",
+            quietHoursEnd: data.housing.quiet_hours_end || "07:00",
             sleepSchedule: data.lifestyle.sleep_schedule === 'early' ? 'Early bird' : 
                           data.lifestyle.sleep_schedule === 'late' ? 'Night owl' : 'Flexible',
             cleanlinessLevel: data.lifestyle.cleanliness_level,
-            choresPreference: "", // This field isn't in the database yet
-            guestsFrequency: "", // This field isn't in the database yet
+            choresPreference: data.lifestyle.chores_preference || "",
+            guestsFrequency: data.lifestyle.guests_frequency || "",
             socialVibe: data.lifestyle.noise_tolerance === 'quiet' ? 'Quiet – mostly keep to myself' :
                        data.lifestyle.noise_tolerance === 'moderate' ? 'Balanced – sometimes socialize, sometimes recharge' :
                        'Lively – I enjoy a busy, social household',
-            workFromHomeDays: 3, // Default value
+            workFromHomeDays: data.lifestyle.work_from_home_days || 3,
             hasPets: data.lifestyle.pets === 'has_pets' ? ['Yes — Dog'] : [], // Simplified mapping
-            comfortableWithPets: data.lifestyle.pets !== 'allergic',
-            petAllergies: data.lifestyle.pets === 'allergic' ? ['Cats'] : [],
-            smokingPolicy: [], // Default value
+            comfortableWithPets: data.lifestyle.comfortable_with_pets || false,
+            petAllergies: data.lifestyle.pet_allergies || [],
+            smokingPolicy: data.lifestyle.smoking_policy || [],
           };
           
           setPreferences(convertedPreferences);

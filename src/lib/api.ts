@@ -179,6 +179,10 @@ export const preferencesAPI = {
   saveHousing: async (preferences: {
     budgetRange: [number, number];
     moveInDate: string;
+    leaseLength: string[];
+    maxDistance: string;
+    quietHoursStart: string;
+    quietHoursEnd: string;
   }): Promise<{ success: boolean }> => {
     // Convert month format (YYYY-MM) to full date (YYYY-MM-DD)
     const moveInDate = preferences.moveInDate 
@@ -191,6 +195,10 @@ export const preferencesAPI = {
         budget_min: preferences.budgetRange[0],
         budget_max: preferences.budgetRange[1],
         move_in_date: moveInDate,
+        lease_length: preferences.leaseLength,
+        max_distance: preferences.maxDistance,
+        quiet_hours_start: preferences.quietHoursStart,
+        quiet_hours_end: preferences.quietHoursEnd,
       }),
     });
   },
@@ -201,6 +209,12 @@ export const preferencesAPI = {
     socialVibe: string;
     sleepSchedule: string;
     hasPets: string[];
+    choresPreference: string;
+    guestsFrequency: string;
+    workFromHomeDays: number;
+    comfortableWithPets: boolean;
+    petAllergies: string[];
+    smokingPolicy: string[];
   }): Promise<{ success: boolean }> => {
     // Simple mappings
     const noise_tolerance =
@@ -221,6 +235,12 @@ export const preferencesAPI = {
         diet: 'none',
         pets: preferences.hasPets.length ? 'has_pets' : 'no_pets',
         sharing_items: 'sometimes',
+        chores_preference: preferences.choresPreference,
+        guests_frequency: preferences.guestsFrequency,
+        work_from_home_days: preferences.workFromHomeDays,
+        comfortable_with_pets: preferences.comfortableWithPets,
+        pet_allergies: preferences.petAllergies,
+        smoking_policy: preferences.smokingPolicy,
       }),
     });
   },

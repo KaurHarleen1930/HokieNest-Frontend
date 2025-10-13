@@ -17,6 +17,10 @@ const housingPreferencesSchema = z.object({
   budget_max: z.number().int().min(0),
   move_in_date: z.string().min(1, 'Move-in date is required'),
   move_out_date: z.string().optional().or(z.literal('')).or(z.null()),
+  lease_length: z.array(z.string()).optional().default([]),
+  max_distance: z.string().optional().default(''),
+  quiet_hours_start: z.string().optional().default('22:00'),
+  quiet_hours_end: z.string().optional().default('07:00'),
 });
 
 const lifestylePreferencesSchema = z.object({
@@ -27,6 +31,12 @@ const lifestylePreferencesSchema = z.object({
   diet: z.enum(['vegan', 'vegetarian', 'none']),
   pets: z.enum(['has_pets', 'no_pets', 'allergic']),
   sharing_items: z.enum(['yes', 'sometimes', 'no']),
+  chores_preference: z.string().optional().default(''),
+  guests_frequency: z.string().optional().default(''),
+  work_from_home_days: z.number().int().min(0).max(7).optional().default(3),
+  comfortable_with_pets: z.boolean().optional().default(false),
+  pet_allergies: z.array(z.string()).optional().default([]),
+  smoking_policy: z.array(z.string()).optional().default([]),
 });
 
 // Update user profile (gender, age, major)
@@ -93,6 +103,10 @@ router.post('/housing', authenticateToken as any, async (req: any, res: Response
           budget_max: validatedData.budget_max,
           move_in_date: validatedData.move_in_date,
           move_out_date: validatedData.move_out_date || null,
+          lease_length: validatedData.lease_length,
+          max_distance: validatedData.max_distance,
+          quiet_hours_start: validatedData.quiet_hours_start,
+          quiet_hours_end: validatedData.quiet_hours_end,
         })
         .eq('user_id', userId);
 
@@ -110,6 +124,10 @@ router.post('/housing', authenticateToken as any, async (req: any, res: Response
           budget_max: validatedData.budget_max,
           move_in_date: validatedData.move_in_date,
           move_out_date: validatedData.move_out_date || null,
+          lease_length: validatedData.lease_length,
+          max_distance: validatedData.max_distance,
+          quiet_hours_start: validatedData.quiet_hours_start,
+          quiet_hours_end: validatedData.quiet_hours_end,
         });
 
       if (error) {
@@ -161,6 +179,12 @@ router.post('/lifestyle', authenticateToken as any, async (req: any, res: Respon
           diet: validatedData.diet,
           pets: validatedData.pets,
           sharing_items: validatedData.sharing_items,
+          chores_preference: validatedData.chores_preference,
+          guests_frequency: validatedData.guests_frequency,
+          work_from_home_days: validatedData.work_from_home_days,
+          comfortable_with_pets: validatedData.comfortable_with_pets,
+          pet_allergies: validatedData.pet_allergies,
+          smoking_policy: validatedData.smoking_policy,
         })
         .eq('user_id', userId);
 
@@ -181,6 +205,12 @@ router.post('/lifestyle', authenticateToken as any, async (req: any, res: Respon
           diet: validatedData.diet,
           pets: validatedData.pets,
           sharing_items: validatedData.sharing_items,
+          chores_preference: validatedData.chores_preference,
+          guests_frequency: validatedData.guests_frequency,
+          work_from_home_days: validatedData.work_from_home_days,
+          comfortable_with_pets: validatedData.comfortable_with_pets,
+          pet_allergies: validatedData.pet_allergies,
+          smoking_policy: validatedData.smoking_policy,
         });
 
       if (error) {
