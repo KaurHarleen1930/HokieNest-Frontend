@@ -7,6 +7,8 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { useNavigate } from "react-router-dom";
 import { ChevronLeft, ChevronRight, CheckCircle2 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
+import { preferencesAPI } from "@/lib/api";
+import { useAuth } from "@/lib/auth";
 
 interface RoommatePreferences {
   budgetRange: [number, number];
@@ -49,6 +51,7 @@ const defaultPreferences: RoommatePreferences = {
 export default function RoommateQuestionnaire() {
   const navigate = useNavigate();
   const { toast } = useToast();
+  const { isAuthenticated, token } = useAuth();
   const [currentStep, setCurrentStep] = useState(1);
   const [preferences, setPreferences] = useState<RoommatePreferences>(
     () => {
@@ -74,14 +77,37 @@ export default function RoommateQuestionnaire() {
     }
   };
 
-  const handleComplete = () => {
-    localStorage.setItem("roommatePreferences", JSON.stringify(preferences));
-    toast({
-      title: "Profile Complete!",
-      description: "Your roommate preferences have been saved.",
-    });
-    navigate("/roommate-profile");
+  const handleComplete = async () => {
+    try {
+      if (!isAuthenticated || !token) {
+        toast({
+          title: "Error",
+          description: "Please log in first.",
+          variant: "destructive",
+        });
+        return;
+      }
+
+      await preferencesAPI.saveHousing(preferences);
+      await preferencesAPI.saveLifestyle(preferences);
+
+      localStorage.setItem("roommatePreferences", JSON.stringify(preferences));
+      toast({
+        title: "Profile Complete!",
+        description: "Your roommate preferences have been saved to your account.",
+      });
+
+      navigate("/roommate-profile");
+    } catch (error: any) {
+      console.error("Failed to save preferences:", error);
+      toast({
+        title: "Error",
+        description: error.message || "Failed to save preferences.",
+        variant: "destructive",
+      });
+    }
   };
+
 
   const updatePreference = (key: keyof RoommatePreferences, value: any) => {
     setPreferences((prev) => ({ ...prev, [key]: value }));

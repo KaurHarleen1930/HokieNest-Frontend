@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -9,6 +9,8 @@ import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { useNavigate } from "react-router-dom";
 import { Edit, User, DollarSign, Calendar, MapPin, Moon, Sparkles, Users, Home, Briefcase, Heart, AlertCircle, Save, X } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
+import { useAuth } from "@/lib/auth";
+import { preferencesAPI } from "@/lib/api";
 
 interface RoommatePreferences {
   budgetRange: [number, number];
@@ -32,21 +34,110 @@ interface RoommatePreferences {
 export default function RoommateProfile() {
   const navigate = useNavigate();
   const { toast } = useToast();
+  const { isAuthenticated, token } = useAuth();
   const [isEditing, setIsEditing] = useState(false);
-  const [preferences, setPreferences] = useState<RoommatePreferences | null>(() => {
-    const saved = localStorage.getItem("roommatePreferences");
-    return saved ? JSON.parse(saved) : null;
-  });
-  const [editedPreferences, setEditedPreferences] = useState<RoommatePreferences | null>(preferences);
+  const [loading, setLoading] = useState(true);
+  const [preferences, setPreferences] = useState<RoommatePreferences | null>(null);
+  const [editedPreferences, setEditedPreferences] = useState<RoommatePreferences | null>(null);
 
-  const handleSave = () => {
-    if (editedPreferences) {
+  // Load preferences from database on component mount
+  useEffect(() => {
+    const loadPreferences = async () => {
+      if (!isAuthenticated || !token) {
+        // Fallback to localStorage if not authenticated
+        const saved = localStorage.getItem("roommatePreferences");
+        if (saved) {
+          const parsedPreferences = JSON.parse(saved);
+          setPreferences(parsedPreferences);
+          setEditedPreferences(parsedPreferences);
+        }
+        setLoading(false);
+        return;
+      }
+
+      try {
+        const data = await preferencesAPI.getPreferences();
+        
+        if (data.housing && data.lifestyle) {
+          // Convert database data back to frontend format
+          const convertedPreferences: RoommatePreferences = {
+            budgetRange: [data.housing.budget_min, data.housing.budget_max],
+            moveInDate: data.housing.move_in_date ? data.housing.move_in_date.substring(0, 7) : "", // Convert YYYY-MM-DD to YYYY-MM
+            leaseLength: [], // This field isn't in the database yet
+            maxDistance: "", // This field isn't in the database yet
+            quietHoursStart: "22:00", // Default values for fields not in database
+            quietHoursEnd: "07:00",
+            sleepSchedule: data.lifestyle.sleep_schedule === 'early' ? 'Early bird' : 
+                          data.lifestyle.sleep_schedule === 'late' ? 'Night owl' : 'Flexible',
+            cleanlinessLevel: data.lifestyle.cleanliness_level,
+            choresPreference: "", // This field isn't in the database yet
+            guestsFrequency: "", // This field isn't in the database yet
+            socialVibe: data.lifestyle.noise_tolerance === 'quiet' ? 'Quiet – mostly keep to myself' :
+                       data.lifestyle.noise_tolerance === 'moderate' ? 'Balanced – sometimes socialize, sometimes recharge' :
+                       'Lively – I enjoy a busy, social household',
+            workFromHomeDays: 3, // Default value
+            hasPets: data.lifestyle.pets === 'has_pets' ? ['Yes — Dog'] : [], // Simplified mapping
+            comfortableWithPets: data.lifestyle.pets !== 'allergic',
+            petAllergies: data.lifestyle.pets === 'allergic' ? ['Cats'] : [],
+            smokingPolicy: [], // Default value
+          };
+          
+          setPreferences(convertedPreferences);
+          setEditedPreferences(convertedPreferences);
+          
+          // Also save to localStorage as backup
+          localStorage.setItem("roommatePreferences", JSON.stringify(convertedPreferences));
+        } else {
+          // No preferences in database, check localStorage
+          const saved = localStorage.getItem("roommatePreferences");
+          if (saved) {
+            const parsedPreferences = JSON.parse(saved);
+            setPreferences(parsedPreferences);
+            setEditedPreferences(parsedPreferences);
+          }
+        }
+      } catch (error) {
+        console.error("Failed to load preferences:", error);
+        // Fallback to localStorage
+        const saved = localStorage.getItem("roommatePreferences");
+        if (saved) {
+          const parsedPreferences = JSON.parse(saved);
+          setPreferences(parsedPreferences);
+          setEditedPreferences(parsedPreferences);
+        }
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    loadPreferences();
+  }, [isAuthenticated, token]);
+
+  const handleSave = async () => {
+    if (!editedPreferences) return;
+
+    try {
+      if (isAuthenticated && token) {
+        // Save to database
+        await preferencesAPI.saveHousing(editedPreferences);
+        await preferencesAPI.saveLifestyle(editedPreferences);
+      }
+
+      // Save to localStorage as backup
       localStorage.setItem("roommatePreferences", JSON.stringify(editedPreferences));
       setPreferences(editedPreferences);
       setIsEditing(false);
+      
       toast({
         title: "Profile Updated",
         description: "Your roommate preferences have been saved successfully.",
+      });
+    } catch (error: any) {
+      console.error("Failed to save preferences:", error);
+      toast({
+        title: "Error",
+        description: error.message || "Failed to save preferences.",
+        variant: "destructive",
       });
     }
   };
@@ -55,6 +146,20 @@ export default function RoommateProfile() {
     setEditedPreferences(preferences);
     setIsEditing(false);
   };
+
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center">
+        <Card className="p-8 max-w-md text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary mx-auto mb-4"></div>
+          <h2 className="text-2xl font-bold text-primary mb-4">Loading Profile</h2>
+          <p className="text-muted">
+            Loading your roommate preferences...
+          </p>
+        </Card>
+      </div>
+    );
+  }
 
   if (!preferences) {
     return (

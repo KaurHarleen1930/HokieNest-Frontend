@@ -156,3 +156,72 @@ export const usersAPI = {
     });
   },
 };
+
+
+
+
+// Roommate Preferences API
+export const preferencesAPI = {
+  // Get user preferences (housing + lifestyle)
+  getPreferences: async (): Promise<{
+    profile: any;
+    housing: any;
+    lifestyle: any;
+  }> => {
+    return apiRequest<{
+      profile: any;
+      housing: any;
+      lifestyle: any;
+    }>('/preferences/profile');
+  },
+
+  // Save housing preferences
+  saveHousing: async (preferences: {
+    budgetRange: [number, number];
+    moveInDate: string;
+  }): Promise<{ success: boolean }> => {
+    // Convert month format (YYYY-MM) to full date (YYYY-MM-DD)
+    const moveInDate = preferences.moveInDate 
+      ? `${preferences.moveInDate}-01` 
+      : '';
+    
+    return apiRequest<{ success: boolean }>('/preferences/housing', {
+      method: 'POST',
+      body: JSON.stringify({
+        budget_min: preferences.budgetRange[0],
+        budget_max: preferences.budgetRange[1],
+        move_in_date: moveInDate,
+      }),
+    });
+  },
+
+  // Save lifestyle preferences
+  saveLifestyle: async (preferences: {
+    cleanlinessLevel: number;
+    socialVibe: string;
+    sleepSchedule: string;
+    hasPets: string[];
+  }): Promise<{ success: boolean }> => {
+    // Simple mappings
+    const noise_tolerance =
+      preferences.socialVibe.includes('Quiet') ? 'quiet' :
+      preferences.socialVibe.includes('Balanced') ? 'moderate' : 'loud';
+
+    const sleep_schedule =
+      preferences.sleepSchedule === 'Early bird' ? 'early' :
+      preferences.sleepSchedule === 'Night owl' ? 'late' : 'flexible';
+
+    return apiRequest<{ success: boolean }>('/preferences/lifestyle', {
+      method: 'POST',
+      body: JSON.stringify({
+        cleanliness_level: preferences.cleanlinessLevel,
+        noise_tolerance,
+        sleep_schedule,
+        cooking_habits: 'sometimes',
+        diet: 'none',
+        pets: preferences.hasPets.length ? 'has_pets' : 'no_pets',
+        sharing_items: 'sometimes',
+      }),
+    });
+  },
+};

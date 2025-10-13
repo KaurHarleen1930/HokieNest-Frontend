@@ -40,7 +40,11 @@ const App = () => (
               <Route path="/forgot-password" element={<ForgotPassword />} />
               <Route path="/reset-password" element={<ResetPassword />} />
               <Route path="/verify-email" element={<VerifyEmail />} />
-              <Route path="/roommate-questionnaire" element={<RoommateQuestionnaire />} />
+              <Route path="/roommate-questionnaire" element={
+                <ProtectedRoute>
+                  <RoommateQuestionnaire />
+                </ProtectedRoute>
+              } />
               <Route path="/roommate-profile" element={<RoommateProfile />} />
               <Route path="/properties" element={<Properties />} />
               <Route path="/__debug/listings" element={<ListingsDebug />} /> {/* 👈 add this */}
