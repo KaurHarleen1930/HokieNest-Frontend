@@ -130,7 +130,26 @@ router.post('/housing', authenticateToken as any, async (req: any, res: Response
           quiet_hours_end: validatedData.quiet_hours_end,
         });
 
-      if (error) {
+      if (error && error.code === '23505') {
+        // Unique constraint violation, update instead
+        const { error: updateError } = await supabase
+          .from('housing_preferences')
+          .update({
+            budget_min: validatedData.budget_min,
+            budget_max: validatedData.budget_max,
+            move_in_date: validatedData.move_in_date,
+            move_out_date: validatedData.move_out_date || null,
+            lease_length: validatedData.lease_length,
+            max_distance: validatedData.max_distance,
+            quiet_hours_start: validatedData.quiet_hours_start,
+            quiet_hours_end: validatedData.quiet_hours_end,
+          })
+          .eq('user_id', userId);
+        if (updateError) {
+          console.error('Error updating housing preferences after duplicate:', updateError);
+          return res.status(500).json({ message: 'Failed to update housing preferences' });
+        }
+      } else if (error) {
         console.error('Error creating housing preferences:', error);
         return res.status(500).json({ message: 'Failed to create housing preferences' });
       }
@@ -213,7 +232,31 @@ router.post('/lifestyle', authenticateToken as any, async (req: any, res: Respon
           smoking_policy: validatedData.smoking_policy,
         });
 
-      if (error) {
+      if (error && error.code === '23505') {
+        // Unique constraint violation, update instead
+        const { error: updateError } = await supabase
+          .from('lifestyle_preferences')
+          .update({
+            cleanliness_level: validatedData.cleanliness_level,
+            noise_tolerance: validatedData.noise_tolerance,
+            sleep_schedule: validatedData.sleep_schedule,
+            cooking_habits: validatedData.cooking_habits,
+            diet: validatedData.diet,
+            pets: validatedData.pets,
+            sharing_items: validatedData.sharing_items,
+            chores_preference: validatedData.chores_preference,
+            guests_frequency: validatedData.guests_frequency,
+            work_from_home_days: validatedData.work_from_home_days,
+            comfortable_with_pets: validatedData.comfortable_with_pets,
+            pet_allergies: validatedData.pet_allergies,
+            smoking_policy: validatedData.smoking_policy,
+          })
+          .eq('user_id', userId);
+        if (updateError) {
+          console.error('Error updating lifestyle preferences after duplicate:', updateError);
+          return res.status(500).json({ message: 'Failed to update lifestyle preferences' });
+        }
+      } else if (error) {
         console.error('Error creating lifestyle preferences:', error);
         return res.status(500).json({ message: 'Failed to create lifestyle preferences' });
       }

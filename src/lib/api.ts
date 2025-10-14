@@ -1,7 +1,6 @@
 import { supabase } from "./supabase";
 
-const API_BASE_URL =
-  `${import.meta.env.VITE_API_URL ?? 'http://localhost:4000'}/api/v1`;
+const API_BASE_URL = import.meta.env.VITE_API_URL ?? '/api/v1';
 
 interface ListingFilters {
   minPrice?: number;
@@ -159,6 +158,68 @@ export const usersAPI = {
 
 
 
+
+// Roommate Matching API
+export const roommateAPI = {
+  // Get live matches
+  getMatches: async (limit: number = 10): Promise<{
+    matches: any[];
+    total: number;
+    user_id: number;
+  }> => {
+    return apiRequest<{
+      matches: any[];
+      total: number;
+      user_id: number;
+    }>(`/roommate/matches?limit=${limit}`);
+  },
+
+  // Get saved matches
+  getSavedMatches: async (): Promise<{
+    matches: any[];
+    total: number;
+    user_id: number;
+  }> => {
+    return apiRequest<{
+      matches: any[];
+      total: number;
+      user_id: number;
+    }>('/roommate/matches/saved');
+  },
+
+  // Generate new matches
+  generateMatches: async (limit: number = 10): Promise<{
+    message: string;
+    matches: any[];
+    total: number;
+    user_id: number;
+  }> => {
+    return apiRequest<{
+      message: string;
+      matches: any[];
+      total: number;
+      user_id: number;
+    }>('/roommate/matches/generate', {
+      method: 'POST',
+      body: JSON.stringify({ limit }),
+    });
+  },
+
+  // Get match statistics
+  getStats: async (): Promise<{
+    total_users: number;
+    user_matches: number;
+    average_compatibility: number;
+    user_id: number;
+  }> => {
+    return apiRequest<{
+      total_users: number;
+      user_matches: number;
+      average_compatibility: number;
+      user_id: number;
+    }>('/roommate/matches/stats');
+  },
+};
 
 // Roommate Preferences API
 export const preferencesAPI = {

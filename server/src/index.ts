@@ -7,6 +7,7 @@ import { authRoutes } from './routes/auth';
 import { listingRoutes } from './routes/listings';
 import { adminRoutes } from './routes/admin';
 import { preferencesRoutes } from './routes/preferences';
+import { roommateRoutes } from './routes/roommate';
 import { errorHandler } from './middleware/errorHandler';
 
 dotenv.config({ path: './.env' });
@@ -43,6 +44,7 @@ app.use('/api/v1/auth', authRoutes);
 app.use('/api/v1/listings', listingRoutes);
 app.use('/api/v1/admin', adminRoutes);
 app.use('/api/v1/preferences', preferencesRoutes);
+app.use('/api/v1/roommate', roommateRoutes);
 
 // Error handling
 app.use(errorHandler);

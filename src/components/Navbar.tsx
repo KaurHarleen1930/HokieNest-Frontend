@@ -1,7 +1,7 @@
 import { Link, useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { useAuth } from "@/lib/auth";
-import { Home, LogOut, User, Shield, UserCircle, LayoutDashboard } from "lucide-react";
+import { Home, LogOut, User, Shield, UserCircle, LayoutDashboard, Users } from "lucide-react";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -39,12 +39,20 @@ export function Navbar() {
             Properties
           </Link>
           {isAuthenticated && (
-            <Link
-              to="/dashboard"
-              className="text-foreground hover:text-accent transition-colors font-medium"
-            >
-              Dashboard
-            </Link>
+            <>
+              <Link
+                to="/dashboard"
+                className="text-foreground hover:text-accent transition-colors font-medium"
+              >
+                Dashboard
+              </Link>
+              <Link
+                to="/roommate-matches"
+                className="text-foreground hover:text-accent transition-colors font-medium"
+              >
+                Find Roommates
+              </Link>
+            </>
           )}
         </div>
 
@@ -81,6 +89,10 @@ export function Navbar() {
                 <DropdownMenuItem onClick={() => navigate('/properties')}>
                   <Home className="h-4 w-4 mr-2" />
                   Properties
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => navigate('/roommate-matches')}>
+                  <Users className="h-4 w-4 mr-2" />
+                  Find Roommates
                 </DropdownMenuItem>
                 {user?.role === 'admin' && (
                   <>

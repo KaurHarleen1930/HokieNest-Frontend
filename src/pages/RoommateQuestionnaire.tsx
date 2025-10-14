@@ -11,6 +11,9 @@ import { preferencesAPI } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
 
 interface RoommatePreferences {
+  age: number;
+  gender: string;
+  major: string;
   budgetRange: [number, number];
   moveInDate: string;
   leaseLength: string[];
@@ -30,6 +33,9 @@ interface RoommatePreferences {
 }
 
 const defaultPreferences: RoommatePreferences = {
+  age: 18,
+  gender: "",
+  major: "",
   budgetRange: [700, 1200],
   moveInDate: "",
   leaseLength: [],
@@ -136,6 +142,24 @@ export default function RoommateQuestionnaire() {
         return;
       }
 
+      // Update profile info (age, gender, major)
+      const profileRes = await fetch("/api/v1/roommate/profile/update", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          age: preferences.age,
+          gender: preferences.gender,
+          major: preferences.major,
+        }),
+      });
+      if (!profileRes.ok) {
+        const err = await profileRes.json();
+        throw new Error(err.message || "Failed to update profile info");
+      }
+
       await preferencesAPI.saveHousing(preferences);
       await preferencesAPI.saveLifestyle(preferences);
 
@@ -205,30 +229,53 @@ export default function RoommateQuestionnaire() {
 
         {/* Question Card */}
         <div className="bg-card border border-border rounded-lg shadow-md p-8 mb-6">
-          {/* Step 1: Budget */}
+          {/* Step 1: Basic Info */}
           {currentStep === 1 && (
             <div className="space-y-6 animate-fade-in">
               <div>
                 <h2 className="text-2xl font-bold text-primary mb-2">
-                  💵 What's your monthly housing budget per person?
+                  � Tell us about yourself
                 </h2>
-                <p className="text-muted">Use the slider to set a range that fits your comfort level.</p>
+                <p className="text-muted">This info helps us match you with compatible roommates.</p>
               </div>
               <div className="space-y-4">
-                <Slider
-                  value={preferences.budgetRange}
-                  min={400}
-                  max={2000}
-                  step={50}
-                  onValueChange={(vals) => updatePreference("budgetRange", [vals[0], vals[1]])}
-                />
-                <div className="flex justify-between text-lg font-semibold text-primary">
-                  <span>${preferences.budgetRange[0]}</span>
-                  <span>${preferences.budgetRange[1]}</span>
+                <div>
+                  <Label htmlFor="age">Age</Label>
+                  <input
+                    id="age"
+                    type="number"
+                    min={16}
+                    max={99}
+                    value={preferences.age}
+                    onChange={(e) => updatePreference("age", Number(e.target.value))}
+                    className="w-full px-4 py-2 border border-border rounded-md bg-background"
+                  />
                 </div>
-                <p className="text-sm text-muted">
-                  We'll match you with roommates whose ranges overlap most with yours.
-                </p>
+                <div>
+                  <Label htmlFor="gender">Gender</Label>
+                  <select
+                    id="gender"
+                    value={preferences.gender}
+                    onChange={(e) => updatePreference("gender", e.target.value)}
+                    className="w-full px-4 py-2 border border-border rounded-md bg-background"
+                  >
+                    <option value="">Select...</option>
+                    <option value="male">Male</option>
+                    <option value="female">Female</option>
+                    <option value="non_binary">Non-binary</option>
+                    <option value="other">Other</option>
+                  </select>
+                </div>
+                <div>
+                  <Label htmlFor="major">Major</Label>
+                  <input
+                    id="major"
+                    type="text"
+                    value={preferences.major}
+                    onChange={(e) => updatePreference("major", e.target.value)}
+                    className="w-full px-4 py-2 border border-border rounded-md bg-background"
+                  />
+                </div>
               </div>
             </div>
           )}

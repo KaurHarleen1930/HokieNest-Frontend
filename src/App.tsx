@@ -21,6 +21,7 @@ import NotFound from "./pages/NotFound";
 import ListingsDebug from "./pages/ListingsDebug";
 import RoommateQuestionnaire from "./pages/RoommateQuestionnaire";
 import RoommateProfile from "./pages/RoommateProfile";
+import RoommateMatches from "./pages/RoommateMatches";
 
 const queryClient = new QueryClient();
 
@@ -46,6 +47,11 @@ const App = () => (
                 </ProtectedRoute>
               } />
               <Route path="/roommate-profile" element={<RoommateProfile />} />
+              <Route path="/roommate-matches" element={
+                <ProtectedRoute>
+                  <RoommateMatches />
+                </ProtectedRoute>
+              } />
               <Route path="/properties" element={<Properties />} />
               <Route path="/__debug/listings" element={<ListingsDebug />} /> {/* 👈 add this */}
               <Route path="/properties/:id" element={<PropertyDetail />} />
