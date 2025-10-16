@@ -8,6 +8,7 @@ import { listingRoutes } from './routes/listings';
 import { adminRoutes } from './routes/admin';
 import { preferencesRoutes } from './routes/preferences';
 import { errorHandler } from './middleware/errorHandler';
+import { mapRoutes } from './routes/map';
 
 dotenv.config({ path: './.env' });
 
@@ -39,6 +40,7 @@ app.get('/health', (req, res) => {
 });
 
 // API Routes
+app.use('/api/v1/map', mapRoutes);
 app.use('/api/v1/auth', authRoutes);
 app.use('/api/v1/listings', listingRoutes);
 app.use('/api/v1/admin', adminRoutes);

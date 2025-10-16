@@ -21,6 +21,7 @@ import NotFound from "./pages/NotFound";
 import ListingsDebug from "./pages/ListingsDebug";
 import RoommateQuestionnaire from "./pages/RoommateQuestionnaire";
 import RoommateProfile from "./pages/RoommateProfile";
+import 'leaflet/dist/leaflet.css';
 
 const queryClient = new QueryClient();
 

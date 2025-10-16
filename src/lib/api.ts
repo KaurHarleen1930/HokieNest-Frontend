@@ -24,6 +24,17 @@ export interface Listing {
   amenities?: string[];
   contactEmail?: string;
   contactPhone?: string;
+
+  //map features
+
+  name?: string;              // Alternative to title
+  latitude?: number;          // For map positioning
+  longitude?: number;         // For map positioning
+  rent_min?: number;          // Alternative to price
+  min_rent?: number;          // Another alternative
+  unit_beds?: number;         // Alternative to beds
+  unit_baths?: number;        // Alternative to baths
+  thumbnail_url?: string;     // Alternative to imageUrl
 }
 
 export interface User {
@@ -32,6 +43,147 @@ export interface User {
   name: string;
   role: 'student' | 'staff' | 'admin';
   suspended?: boolean;
+}
+
+export interface PropertyMarker {
+  id: string;
+  name: string;
+  address: string;
+  city: string;
+  state: string;
+  latitude: number;
+  longitude: number;
+  thumbnail_url?: string;
+  property_type: string;
+  rent_min: number;
+  beds_available: number[];
+  total_units: number;
+  baths: number;
+}
+
+export interface ReferenceLocation {
+  id: string;
+  name: string;
+  type: 'university' | 'transit' | 'employer';
+  latitude: number;
+  longitude: number;
+  address?: string;
+}
+
+export interface NearbyLocation {
+  name: string;
+  type: string;
+  address?: string;
+  latitude: number;
+  longitude: number;
+  distance_miles: number;
+  walking_time_minutes: number;
+  driving_time_minutes: number;
+}
+
+export const mapAPI = {
+  /**
+   * Get all properties as map markers
+   */
+  async getMapMarkers(filters?: {
+    city?: string;
+    min_rent?: number;
+    max_rent?: number;
+    beds?: number;
+    property_type?: string;
+  }): Promise<PropertyMarker[]> {
+    const params = new URLSearchParams();
+    if (filters?.city) params.append('city', filters.city);
+    if (filters?.min_rent) params.append('min_rent', filters.min_rent.toString());
+    if (filters?.max_rent) params.append('max_rent', filters.max_rent.toString());
+    if (filters?.beds) params.append('beds', filters.beds.toString());
+    if (filters?.property_type) params.append('property_type', filters.property_type);
+
+    const response = await fetch(`${API_BASE_URL}/map/markers?${params}`);
+    if (!response.ok) throw new Error('Failed to fetch map markers');
+    return response.json();
+  },
+
+  /**
+   * Get reference locations (universities, metro, employers)
+   */
+  async getReferenceLocations(type?: string): Promise<ReferenceLocation[]> {
+    const params = type ? `?location_type=${type}` : '';
+    const response = await fetch(`${API_BASE_URL}/map/reference-locations${params}`);
+    if (!response.ok) throw new Error('Failed to fetch reference locations');
+    return response.json();
+  },
+
+  /**
+   * Get property with distances to nearby locations
+   */
+  async getPropertyWithDistances(propertyId: string): Promise<any> {
+    const response = await fetch(`${API_BASE_URL}/map/properties/${propertyId}`);
+    if (!response.ok) throw new Error('Failed to fetch property details');
+    return response.json();
+  },
+
+  /**
+   * Get properties within map bounds
+   */
+  async getPropertiesInBounds(bounds: {
+    southwest_lat: number;
+    southwest_lng: number;
+    northeast_lat: number;
+    northeast_lng: number;
+  }): Promise<PropertyMarker[]> {
+    const response = await fetch(`${API_BASE_URL}/map/properties-in-bounds`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(bounds),
+    });
+    if (!response.ok) throw new Error('Failed to fetch properties in bounds');
+    return response.json();
+  },
+
+  /**
+   * Get properties near a point
+   */
+  async getNearbyProperties(
+    latitude: number,
+    longitude: number,
+    radiusMiles: number = 5.0,
+    limit: number = 20
+  ): Promise<PropertyMarker[]> {
+    const params = new URLSearchParams({
+      latitude: latitude.toString(),
+      longitude: longitude.toString(),
+      radius_miles: radiusMiles.toString(),
+      limit: limit.toString(),
+    });
+
+    const response = await fetch(`${API_BASE_URL}/map/nearby-properties?${params}`);
+    if (!response.ok) throw new Error('Failed to fetch nearby properties');
+    return response.json();
+  },
+};
+
+// src/lib/api.ts
+export type MapMarker = {
+  id: string;
+  name: string;
+  address: string;
+  city: string;
+  state: string;
+  latitude: number;
+  longitude: number;
+  thumbnail_url?: string;
+  property_type: string;
+  rent_min: number;
+  beds_available: number[];
+  total_units: number;
+  baths: number;
+};
+
+export async function fetchMapMarkers(): Promise<MapMarker[]> {
+  const res = await fetch('http://localhost:4000/api/v1/map/markers', { credentials: 'include' });
+  if (!res.ok) throw new Error('Failed to fetch markers');
+  return res.json();
 }
 
 class APIError extends Error {
