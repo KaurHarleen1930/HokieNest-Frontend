@@ -34,7 +34,9 @@ function normalizeListing(l: AnyListing) {
 
   const address: string = l.address ?? "";
 
-  // ---- PRICE: prefer unit min rent (support snake/camel + units[]), then legacy price, then _meta.price ----
+  // ---- PRICE: prefer backend _priceRange data, then unit min rent, then legacy price ----
+  const backendPrice = l._priceRange?.min;
+
   const unitMinRent =
     l.min_rent ??
     l.minRent ??
@@ -51,16 +53,16 @@ function normalizeListing(l: AnyListing) {
   const metaPrice =
     typeof rawMetaPrice === "string" ? parseFloat(rawMetaPrice) : rawMetaPrice;
 
-  const price: number = Number(unitMinRent ?? l.price ?? metaPrice ?? 0);
+  const price: number = Number(backendPrice ?? l.price ?? unitMinRent ?? metaPrice ?? 0);
 
   // ---- BEDS/BATHS: prefer unit fields (support snake/camel + units[]), then legacy, then _meta ----
   const beds: number = Number(
     l.beds ??
-      l.unit_beds ??
-      l.unitBeds ??
-      l.units?.[0]?.beds ??
-      l?.amenities?._meta?.beds ??
-      0
+    l.unit_beds ??
+    l.unitBeds ??
+    l.units?.[0]?.beds ??
+    l?.amenities?._meta?.beds ??
+    0
   );
 
   const bathsRaw =

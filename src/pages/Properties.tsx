@@ -20,8 +20,8 @@ import { supabase } from "@/lib/supabase";
 interface Filters {
   minPrice: string;
   maxPrice: string;
-  beds: string;
-  baths: string;
+  beds: string[];  // Changed to array for multiselect
+  baths: string[]; // Changed to array for multiselect
   intlFriendly: boolean;
 }
 type Range = [number, number];
@@ -68,8 +68,8 @@ export default function Properties() {
   const [filters, setFilters] = useState<Filters>({
     minPrice: "",
     maxPrice: "",
-    beds: "any",
-    baths: "any",
+    beds: [],  // Empty array for multiselect
+    baths: [], // Empty array for multiselect
     intlFriendly: false,
   });
 
@@ -80,16 +80,31 @@ export default function Properties() {
         setLoading(true);
         setError(null);
 
-        // send only non-price filters to the backend
-        const apiFilters: any = {};
-        if (filters.beds !== "any") apiFilters.beds = parseInt(filters.beds);
-        if (filters.baths !== "any") apiFilters.baths = parseInt(filters.baths);
-        if (filters.intlFriendly) apiFilters.intlFriendly = true;
-
-        const data = await listingsAPI.getAll(apiFilters);
+        // Get all listings from backend - filtering is done on frontend
+        const data = await listingsAPI.getAll({});
         setAllListings(data);
 
-        // 2) Load units for these properties from Supabase and compute stats
+        // Use backend data directly - no need for frontend Supabase query
+        // Set price bounds from backend data
+        let globalMin = Infinity, globalMax = -Infinity;
+        data.forEach((l: any) => {
+          if (l._priceRange?.min != null) globalMin = Math.min(globalMin, l._priceRange.min);
+          if (l._priceRange?.max != null) globalMax = Math.max(globalMax, l._priceRange.max);
+        });
+
+        if (Number.isFinite(globalMin) && Number.isFinite(globalMax)) {
+          setBounds([globalMin, globalMax]);
+          setFilters(prev => ({
+            ...prev,
+            minPrice: prev.minPrice || String(globalMin),
+            maxPrice: prev.maxPrice || String(globalMax),
+          }));
+        } else {
+          setBounds([0, 5000]);
+        }
+
+        // Skip the frontend Supabase query for now
+        /*
         const ids = data.map((l: any) => l.id) as string[];
 
         if (ids.length) {
@@ -119,12 +134,23 @@ export default function Properties() {
             byProp.set(pid, cur);
           }
 
-          // global bounds for slider
+          // global bounds for slider - use backend data first, then fallback to frontend calculation
           let globalMin = Infinity, globalMax = -Infinity;
-          byProp.forEach(s => {
-            if (s.minRent != null) globalMin = Math.min(globalMin, s.minRent);
-            if (s.maxRent != null) globalMax = Math.max(globalMax, s.maxRent);
+
+          // Try to use backend price data first
+          data.forEach((l: any) => {
+            if (l._priceRange?.min != null) globalMin = Math.min(globalMin, l._priceRange.min);
+            if (l._priceRange?.max != null) globalMax = Math.max(globalMax, l._priceRange.max);
           });
+
+          // Fallback to frontend calculation if backend data not available
+          if (!Number.isFinite(globalMin) || !Number.isFinite(globalMax)) {
+            byProp.forEach(s => {
+              if (s.minRent != null) globalMin = Math.min(globalMin, s.minRent);
+              if (s.maxRent != null) globalMax = Math.max(globalMax, s.maxRent);
+            });
+          }
+
           if (!Number.isFinite(globalMin) || !Number.isFinite(globalMax)) {
             setBounds([0, 5000]);
           } else {
@@ -147,11 +173,14 @@ export default function Properties() {
                 minBeds: null, maxBeds: null,
                 minBaths: null, maxBaths: null,
               },
+              // Use backend's price data if available
+              price: l._priceRange?.min || l.price || 0,
             }))
           );
         } else {
           setBounds([0, 5000]);
         }
+        */
       } catch (e: any) {
         setError(e?.message || "Failed to fetch properties");
       } finally {
@@ -167,31 +196,41 @@ export default function Properties() {
     const min = filters.minPrice ? parseInt(filters.minPrice) : bounds?.[0] ?? 0;
     const max = filters.maxPrice ? parseInt(filters.maxPrice) : bounds?.[1] ?? 999999;
 
-    return allListings.filter((l: any) => {
-      const s: Stats = l._stats ?? {
-        unitsCount: 0, minRent: null, maxRent: null, minBeds: null, maxBeds: null, minBaths: null, maxBaths: null
-      };
+    const result = allListings.filter((l: any) => {
+      // Use backend data directly
+      const priceRange = l._priceRange || { min: l.price || 0, max: l.price || 0 };
 
-      // price overlap
-      const priceOk =
-        s.minRent != null && s.maxRent != null &&
-        s.minRent <= max && s.maxRent >= min;
+      // price overlap - use backend price range
+      const priceOk = priceRange.min <= max && priceRange.max >= min;
 
-      // beds/baths
+      // beds/baths - use exact matches with multiselect support
       const bedsOk =
-        filters.beds === "any" ||
-        (s.maxBeds != null && (filters.beds === "4" ? s.maxBeds >= 4 : s.maxBeds >= parseInt(filters.beds)));
+        filters.beds.length === 0 || // No selection = show all
+          filters.beds.includes("4") ? l.beds >= 4 : // 4+ includes 4 and above
+          filters.beds.some(bed => l.beds === parseInt(bed)); // Exact matches
 
       const bathsOk =
-        filters.baths === "any" ||
-        (s.maxBaths != null && (filters.baths === "3" ? s.maxBaths >= 3 : s.maxBaths >= parseInt(filters.baths)));
+        filters.baths.length === 0 || // No selection = show all
+          filters.baths.includes("3") ? l.baths >= 3 : // 3+ includes 3 and above
+          filters.baths.some(bath => l.baths === parseInt(bath)); // Exact matches
 
-      // intl flag (assume boolean on listing)
-      const intlOk = !filters.intlFriendly || Boolean((l as any).intlFriendly);
+      // intl flag
+      const intlOk = !filters.intlFriendly || Boolean(l.intlFriendly);
 
       return priceOk && bedsOk && bathsOk && intlOk;
     });
-  }, [allListings, filters, bounds]);
+
+    // Sort results to put selected property first
+    if (selectedProperty) {
+      result.sort((a, b) => {
+        if (a.id === selectedProperty.id) return -1;
+        if (b.id === selectedProperty.id) return 1;
+        return 0;
+      });
+    }
+
+    return result;
+  }, [allListings, filters, bounds, selectedProperty]);
 
   const handleFilterChange = (key: keyof Filters, value: any) => {
     setFilters(prev => ({ ...prev, [key]: value }));
@@ -202,17 +241,25 @@ export default function Properties() {
       setFilters({
         minPrice: String(bounds[0]),
         maxPrice: String(bounds[1]),
-        beds: "any",
-        baths: "any",
+        beds: [],  // Empty array
+        baths: [], // Empty array
         intlFriendly: false,
       });
     } else {
-      setFilters({ minPrice: "", maxPrice: "", beds: "any", baths: "any", intlFriendly: false });
+      setFilters({ minPrice: "", maxPrice: "", beds: [], baths: [], intlFriendly: false });
     }
   };
 
   const activeFilterCount = useMemo(
-    () => Object.values(filters).filter(v => v !== "" && v !== false && v !== "any").length,
+    () => {
+      let count = 0;
+      if (filters.minPrice !== "") count++;
+      if (filters.maxPrice !== "") count++;
+      if (filters.beds.length > 0) count++;
+      if (filters.baths.length > 0) count++;
+      if (filters.intlFriendly) count++;
+      return count;
+    },
     [filters]
   );
 
@@ -344,30 +391,72 @@ export default function Properties() {
                     {/* Bedrooms */}
                     <div className="space-y-3">
                       <Label className="text-sm font-medium">Bedrooms</Label>
-                      <Select value={filters.beds} onValueChange={(v) => handleFilterChange("beds", v)}>
-                        <SelectTrigger className="bg-surface-2 border-surface-3"><SelectValue placeholder="Any" /></SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="any">Any</SelectItem>
-                          <SelectItem value="1">1 bedroom</SelectItem>
-                          <SelectItem value="2">2 bedrooms</SelectItem>
-                          <SelectItem value="3">3 bedrooms</SelectItem>
-                          <SelectItem value="4">4+ bedrooms</SelectItem>
-                        </SelectContent>
-                      </Select>
+                      <div className="space-y-2">
+                        {[
+                          { value: "1", label: "1 bedroom" },
+                          { value: "2", label: "2 bedrooms" },
+                          { value: "3", label: "3 bedrooms" },
+                          { value: "4", label: "4+ bedrooms" }
+                        ].map((option) => (
+                          <div key={option.value} className="flex items-center space-x-2">
+                            <Checkbox
+                              id={`beds-${option.value}`}
+                              checked={filters.beds.includes(option.value)}
+                              onCheckedChange={(checked) => {
+                                if (checked) {
+                                  setFilters(prev => ({
+                                    ...prev,
+                                    beds: [...prev.beds, option.value]
+                                  }));
+                                } else {
+                                  setFilters(prev => ({
+                                    ...prev,
+                                    beds: prev.beds.filter(bed => bed !== option.value)
+                                  }));
+                                }
+                              }}
+                            />
+                            <Label htmlFor={`beds-${option.value}`} className="text-sm">
+                              {option.label}
+                            </Label>
+                          </div>
+                        ))}
+                      </div>
                     </div>
 
                     {/* Bathrooms */}
                     <div className="space-y-3">
                       <Label className="text-sm font-medium">Bathrooms</Label>
-                      <Select value={filters.baths} onValueChange={(v) => handleFilterChange("baths", v)}>
-                        <SelectTrigger className="bg-surface-2 border-surface-3"><SelectValue placeholder="Any" /></SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="any">Any</SelectItem>
-                          <SelectItem value="1">1 bathroom</SelectItem>
-                          <SelectItem value="2">2 bathrooms</SelectItem>
-                          <SelectItem value="3">3+ bathrooms</SelectItem>
-                        </SelectContent>
-                      </Select>
+                      <div className="space-y-2">
+                        {[
+                          { value: "1", label: "1 bathroom" },
+                          { value: "2", label: "2 bathrooms" },
+                          { value: "3", label: "3+ bathrooms" }
+                        ].map((option) => (
+                          <div key={option.value} className="flex items-center space-x-2">
+                            <Checkbox
+                              id={`baths-${option.value}`}
+                              checked={filters.baths.includes(option.value)}
+                              onCheckedChange={(checked) => {
+                                if (checked) {
+                                  setFilters(prev => ({
+                                    ...prev,
+                                    baths: [...prev.baths, option.value]
+                                  }));
+                                } else {
+                                  setFilters(prev => ({
+                                    ...prev,
+                                    baths: prev.baths.filter(bath => bath !== option.value)
+                                  }));
+                                }
+                              }}
+                            />
+                            <Label htmlFor={`baths-${option.value}`} className="text-sm">
+                              {option.label}
+                            </Label>
+                          </div>
+                        ))}
+                      </div>
                     </div>
 
                     {/* International Friendly */}
@@ -407,11 +496,7 @@ export default function Properties() {
                     key={listing.id}
                     listing={{
                       ...listing,
-                      // ensure card sees price stats
-                      minRent: listing._stats?.minRent ?? 0,
-                      maxRent: listing._stats?.maxRent ?? 0,
-                      beds: listing._stats?.maxBeds ?? 0,
-                      baths: listing._stats?.maxBaths ?? 0,
+                      // Use backend data directly - no need for _stats override
                     } as any}
                     className={selectedProperty?.id === listing.id ? "ring-2 ring-accent" : ""}
                   />
@@ -429,15 +514,20 @@ export default function Properties() {
                 </div>
                 <div className="space-y-4 overflow-y-auto">
                   <h3 className="font-semibold text-lg">Properties ({filtered.length})</h3>
-                  {filtered.map((listing: any) => (
-                    <PropertyCard
-                      key={listing.id}
-                      listing={listing as any}
-                      className={`cursor-pointer transition-all ${
-                        selectedProperty?.id === listing.id ? "ring-2 ring-accent shadow-lg" : "hover:shadow-md"
-                      }`}
-                      onClick={() => setSelectedProperty(listing as any)}
-                    />
+                  {filtered.map((listing: any, index: number) => (
+                    <div key={listing.id} className="relative">
+                      {selectedProperty?.id === listing.id && (
+                        <Badge className="absolute -top-2 -right-2 z-10 bg-accent text-white">
+                          Selected
+                        </Badge>
+                      )}
+                      <PropertyCard
+                        listing={listing as any}
+                        className={`cursor-pointer transition-all ${selectedProperty?.id === listing.id ? "ring-2 ring-accent shadow-lg" : "hover:shadow-md"
+                          }`}
+                        onClick={() => setSelectedProperty(listing as any)}
+                      />
+                    </div>
                   ))}
                 </div>
               </div>

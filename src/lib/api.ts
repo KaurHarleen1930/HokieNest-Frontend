@@ -24,6 +24,8 @@ export interface Listing {
   amenities?: string[];
   contactEmail?: string;
   contactPhone?: string;
+  latitude?: number;
+  longitude?: number;
 }
 
 export interface User {
@@ -46,10 +48,10 @@ async function apiRequest<T>(
   options: RequestInit = {}
 ): Promise<T> {
   const token = localStorage.getItem('auth_token');
-  
+
   const url = `${API_BASE_URL}${endpoint}`;
   console.log('🔍 API Request:', url);
-  
+
   try {
     const response = await fetch(url, {
       ...options,
@@ -80,66 +82,22 @@ async function apiRequest<T>(
 // Listings API
 export const listingsAPI = {
   getAll: async (filters?: ListingFilters): Promise<Listing[]> => {
-    let q = supabase
-      .from("apartment_properties_listings")
-      .select("*")
-      .eq("is_active", true);
+    // Build query parameters for backend API
+    const params = new URLSearchParams();
+    if (filters?.minPrice !== undefined) params.append('minPrice', filters.minPrice.toString());
+    if (filters?.maxPrice !== undefined) params.append('maxPrice', filters.maxPrice.toString());
+    if (filters?.beds !== undefined) params.append('beds', filters.beds.toString());
+    if (filters?.baths !== undefined) params.append('baths', filters.baths.toString());
+    if (filters?.intlFriendly !== undefined) params.append('intlFriendly', filters.intlFriendly.toString());
 
-    if (filters?.minPrice !== undefined) q = q.gte("price", filters.minPrice);
-    if (filters?.maxPrice !== undefined) q = q.lte("price", filters.maxPrice);
-    if (filters?.beds !== undefined)     q = q.eq("beds",  filters.beds);
-    if (filters?.baths !== undefined)    q = q.eq("baths", filters.baths);
-    if (filters?.intlFriendly === true)  q = q.eq("intl_friendly", true);
+    const queryString = params.toString();
+    const endpoint = `/listings${queryString ? `?${queryString}` : ''}`;
 
-    const { data, error } = await q;
-    if (error) throw error;
-
-    return (data ?? []).map((row: any): Listing => ({
-      id: row.id,
-      title: row.name ?? "Property",
-      price: Number(row.price ?? 0),
-      address: row.address ?? "",
-      beds: Number(row.beds ?? 0),
-      baths: Number(row.baths ?? 0),
-      intlFriendly: Boolean(row.intl_friendly ?? false),
-      imageUrl:
-        row.thumbnail_url ??
-        (Array.isArray(row.photos) ? row.photos[0] : "") ??
-        "",
-      description: row.description ?? undefined,
-      amenities: Array.isArray(row.amenities) ? row.amenities : undefined,
-      contactEmail: row.email ?? undefined,
-      contactPhone: row.phone_number ?? undefined,
-    }));
+    return apiRequest<Listing[]>(endpoint);
   },
 
   getById: async (id: string): Promise<Listing> => {
-    const { data, error } = await supabase
-      .from("apartment_properties_listings")
-      .select("*")
-      .eq("id", id)
-      .single();
-
-    if (error) throw error;
-    const row: any = data;
-
-    return {
-      id: row.id,
-      title: row.name ?? "Property",
-      price: Number(row.price ?? 0),
-      address: row.address ?? "",
-      beds: Number(row.beds ?? 0),
-      baths: Number(row.baths ?? 0),
-      intlFriendly: Boolean(row.intl_friendly ?? false),
-      imageUrl:
-        row.thumbnail_url ??
-        (Array.isArray(row.photos) ? row.photos[0] : "") ??
-        "",
-      description: row.description ?? undefined,
-      amenities: Array.isArray(row.amenities) ? row.amenities : undefined,
-      contactEmail: row.email ?? undefined,
-      contactPhone: row.phone_number ?? undefined,
-    };
+    return apiRequest<Listing>(`/listings/${id}`);
   },
 };
 
@@ -185,10 +143,10 @@ export const preferencesAPI = {
     quietHoursEnd: string;
   }): Promise<{ success: boolean }> => {
     // Convert month format (YYYY-MM) to full date (YYYY-MM-DD)
-    const moveInDate = preferences.moveInDate 
-      ? `${preferences.moveInDate}-01` 
+    const moveInDate = preferences.moveInDate
+      ? `${preferences.moveInDate}-01`
       : '';
-    
+
     return apiRequest<{ success: boolean }>('/preferences/housing', {
       method: 'POST',
       body: JSON.stringify({
@@ -219,11 +177,11 @@ export const preferencesAPI = {
     // Simple mappings
     const noise_tolerance =
       preferences.socialVibe.includes('Quiet') ? 'quiet' :
-      preferences.socialVibe.includes('Balanced') ? 'moderate' : 'loud';
+        preferences.socialVibe.includes('Balanced') ? 'moderate' : 'loud';
 
     const sleep_schedule =
       preferences.sleepSchedule === 'Early bird' ? 'early' :
-      preferences.sleepSchedule === 'Night owl' ? 'late' : 'flexible';
+        preferences.sleepSchedule === 'Night owl' ? 'late' : 'flexible';
 
     return apiRequest<{ success: boolean }>('/preferences/lifestyle', {
       method: 'POST',
