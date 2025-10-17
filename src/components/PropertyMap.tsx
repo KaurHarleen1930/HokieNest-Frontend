@@ -329,6 +329,11 @@ export const PropertyMap: React.FC<PropertyMapProps> = ({
                   ${(property as any).baths || 0} bath${(property as any).baths !== 1 ? 's' : ''}
                 </span>
               </div>
+              ${(property as any).distanceFromCampus ? `
+                <div class="text-xs text-gray-600 mb-2">
+                  📍 ${(property as any).distanceFromCampus} miles from ${(property as any).nearestCampus?.name || 'VT Campus'}
+                </div>
+              ` : ''}
               <button 
                 onclick="selectProperty('${property.id}')"
                 class="w-full bg-orange-500 text-white px-3 py-2 rounded text-sm hover:bg-orange-600 transition-colors"
@@ -338,10 +343,18 @@ export const PropertyMap: React.FC<PropertyMapProps> = ({
             </div>
           `);
 
-        // Add click handler
+        // Add click handler with zoom functionality
         marker.on('click', () => {
           if (onPropertySelect) {
             onPropertySelect(property as any);
+          }
+          
+          // Zoom to property (unless it's already a detail page)
+          if (!isDetailPage && mapInstanceRef.current) {
+            mapInstanceRef.current.setView([property.latitude, property.longitude], 16, {
+              animate: true,
+              duration: 1
+            });
           }
         });
 

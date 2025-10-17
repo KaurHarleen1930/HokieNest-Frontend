@@ -33,6 +33,24 @@ export interface Listing {
   unit_beds?: number;         // Alternative to beds
   unit_baths?: number;        // Alternative to baths
   thumbnail_url?: string;     // Alternative to imageUrl
+  // Distance information
+  distanceFromCampus?: number;
+  nearestCampus?: {
+    name: string;
+    lat: number;
+    lng: number;
+    id: string;
+  };
+  allCampusDistances?: Array<{
+    campus: {
+      name: string;
+      lat: number;
+      lng: number;
+      id: string;
+    };
+    distance: number;
+    distanceText: string;
+  }>;
 }
 
 export interface User {

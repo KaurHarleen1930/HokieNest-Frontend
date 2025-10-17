@@ -245,9 +245,9 @@ export default function Properties() {
       const intlOk = !filters.intlFriendly || Boolean(l.intlFriendly);
 
       // availability filter - show only properties with available units if enabled
-      const availabilityOk = !filters.availableOnly || (l._unitCount && l._unitCount > 0);
+      const availabilityOk = !filters.availableOnly || (l._availableUnitCount && l._availableUnitCount > 0);
       if (!availabilityOk && filters.availableOnly) {
-        console.log("Properties: Filtering out property", l.title, "because _unitCount:", l._unitCount);
+        console.log("Properties: Filtering out property", l.title, "because _availableUnitCount:", l._availableUnitCount);
       }
       
 
@@ -397,7 +397,12 @@ export default function Properties() {
               {filtered.length} {filtered.length === 1 ? "property" : "properties"} total
               {allListings.length > 0 && (
                 <span className="ml-2 text-sm">
-                  ({allListings.filter((l: any) => l._unitCount > 0).length} with available units)
+                  ({allListings.filter((l: any) => l._availableUnitCount > 0).length} with available units)
+                </span>
+              )}
+              {filtered.length > 0 && (
+                <span className="ml-2 text-sm">
+                  • {filtered.filter((l: any) => l.distanceFromCampus).length} with distance info
                 </span>
               )}
               {totalPages > 1 && (

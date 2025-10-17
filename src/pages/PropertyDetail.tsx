@@ -278,6 +278,20 @@ export default function PropertyDetail() {
                     ${listing.price.toLocaleString()}
                   </span>
                 </div>
+                {listing.distanceFromCampus && (
+                  <>
+                    <Separator />
+                    <div className="flex justify-between">
+                      <span className="text-muted">Distance to VT Campus</span>
+                      <span className="text-foreground font-medium">
+                        {listing.distanceFromCampus} miles
+                      </span>
+                    </div>
+                    <div className="text-xs text-muted">
+                      Nearest: {listing.nearestCampus?.name}
+                    </div>
+                  </>
+                )}
               </CardContent>
             </Card>
 

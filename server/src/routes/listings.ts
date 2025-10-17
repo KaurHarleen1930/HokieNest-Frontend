@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { z } from 'zod';
 import { supabase } from '../lib/supabase';
+import { calculateNearestCampus, calculateAllCampusDistances } from '../utils/distance';
 
 // Generate placeholder image based on property data
 function generatePlaceholderImage(property: any): string {
@@ -59,12 +60,11 @@ router.get('/', async (req, res, next) => {
     // Get property IDs
     const propertyIds = properties.map(p => p.id);
 
-    // Get apartment units for these properties
+    // Get apartment units for these properties (include all units, not just available)
     const { data: units, error: unitsError } = await supabase
       .from('apartment_units')
       .select('*')
-      .in('property_id', propertyIds)
-      .eq('availability_status', 'available');
+      .in('property_id', propertyIds);
 
     if (unitsError) {
       throw unitsError;
@@ -83,16 +83,30 @@ router.get('/', async (req, res, next) => {
     const listings = properties.map(property => {
       const propertyUnits = unitsByProperty.get(property.id) || [];
 
-      // Calculate price range from units
-      const prices = propertyUnits.map(u => [u.rent_min, u.rent_max]).flat().filter(p => p > 0);
+      // Calculate price range from units (include all units for display)
+      const prices = propertyUnits.map((u: any) => [u.rent_min, u.rent_max]).flat().filter((p: any) => p > 0);
       const minPrice = prices.length > 0 ? Math.min(...prices) : 0;
       const maxPrice = prices.length > 0 ? Math.max(...prices) : 0;
 
-      // Calculate beds/baths range
-      const beds = propertyUnits.map(u => u.beds).filter(b => b > 0);
-      const baths = propertyUnits.map(u => u.baths).filter(b => b > 0);
+      // Calculate beds/baths range (include all units for display)
+      const beds = propertyUnits.map((u: any) => u.beds).filter((b: any) => b > 0);
+      const baths = propertyUnits.map((u: any) => u.baths).filter((b: any) => b > 0);
       const maxBeds = beds.length > 0 ? Math.max(...beds) : 0;
       const maxBaths = baths.length > 0 ? Math.max(...baths) : 0;
+
+      // Count available units separately
+      const availableUnits = propertyUnits.filter((u: any) => u.availability_status === 'available');
+
+      // Calculate distance to nearest VT campus if coordinates are available
+      let distanceInfo = null;
+      if (property.latitude && property.longitude) {
+        const nearestCampus = calculateNearestCampus(property.latitude, property.longitude);
+        const allDistances = calculateAllCampusDistances(property.latitude, property.longitude);
+        distanceInfo = {
+          nearest: nearestCampus,
+          all: allDistances
+        };
+      }
 
       return {
         id: property.id,
@@ -116,8 +130,14 @@ router.get('/', async (req, res, next) => {
         state: property.state || '',
         // Additional data for filtering
         _units: propertyUnits,
+        _availableUnits: availableUnits,
         _priceRange: { min: minPrice, max: maxPrice },
-        _unitCount: propertyUnits.length
+        _unitCount: propertyUnits.length,
+        _availableUnitCount: availableUnits.length,
+        // Distance information
+        distanceFromCampus: distanceInfo?.nearest.distance || null,
+        nearestCampus: distanceInfo?.nearest.campus || null,
+        allCampusDistances: distanceInfo?.all || null
       };
     });
 
@@ -125,16 +145,16 @@ router.get('/', async (req, res, next) => {
     let filteredListings = listings;
 
     if (filters.minPrice !== undefined) {
-      filteredListings = filteredListings.filter(l => l._priceRange.max >= filters.minPrice);
+      filteredListings = filteredListings.filter(l => l._priceRange.max >= filters.minPrice!);
     }
     if (filters.maxPrice !== undefined) {
-      filteredListings = filteredListings.filter(l => l._priceRange.min <= filters.maxPrice);
+      filteredListings = filteredListings.filter(l => l._priceRange.min <= filters.maxPrice!);
     }
     if (filters.beds !== undefined) {
-      filteredListings = filteredListings.filter(l => l.beds >= filters.beds);
+      filteredListings = filteredListings.filter(l => l.beds >= filters.beds!);
     }
     if (filters.baths !== undefined) {
-      filteredListings = filteredListings.filter(l => l.baths >= filters.baths);
+      filteredListings = filteredListings.filter(l => l.baths >= filters.baths!);
     }
     if (filters.intlFriendly !== undefined) {
       filteredListings = filteredListings.filter(l => l.intlFriendly === filters.intlFriendly);
@@ -169,12 +189,11 @@ router.get('/:id', async (req, res, next) => {
       return res.status(404).json({ message: 'Listing not found' });
     }
 
-    // Get apartment units for this property
+    // Get apartment units for this property (include all units)
     const { data: units, error: unitsError } = await supabase
       .from('apartment_units')
       .select('*')
-      .eq('property_id', id)
-      .eq('availability_status', 'available');
+      .eq('property_id', id);
 
     if (unitsError) {
       throw unitsError;
@@ -182,14 +201,28 @@ router.get('/:id', async (req, res, next) => {
 
     // Calculate aggregated data
     const propertyUnits = units || [];
-    const prices = propertyUnits.map(u => [u.rent_min, u.rent_max]).flat().filter(p => p > 0);
+    const prices = propertyUnits.map((u: any) => [u.rent_min, u.rent_max]).flat().filter((p: any) => p > 0);
     const minPrice = prices.length > 0 ? Math.min(...prices) : 0;
     const maxPrice = prices.length > 0 ? Math.max(...prices) : 0;
 
-    const beds = propertyUnits.map(u => u.beds).filter(b => b > 0);
-    const baths = propertyUnits.map(u => u.baths).filter(b => b > 0);
+    const beds = propertyUnits.map((u: any) => u.beds).filter((b: any) => b > 0);
+    const baths = propertyUnits.map((u: any) => u.baths).filter((b: any) => b > 0);
     const maxBeds = beds.length > 0 ? Math.max(...beds) : 0;
     const maxBaths = baths.length > 0 ? Math.max(...baths) : 0;
+
+    // Count available units separately
+    const availableUnits = propertyUnits.filter((u: any) => u.availability_status === 'available');
+
+    // Calculate distance to nearest VT campus if coordinates are available
+    let distanceInfo = null;
+    if (property.latitude && property.longitude) {
+      const nearestCampus = calculateNearestCampus(property.latitude, property.longitude);
+      const allDistances = calculateAllCampusDistances(property.latitude, property.longitude);
+      distanceInfo = {
+        nearest: nearestCampus,
+        all: allDistances
+      };
+    }
 
     const formattedListing = {
       id: property.id,
@@ -199,7 +232,7 @@ router.get('/:id', async (req, res, next) => {
       beds: maxBeds,
       baths: maxBaths,
       intlFriendly: property.intl_friendly || false,
-      imageUrl: property.thumbnail_url || (Array.isArray(property.photos) ? property.photos[0] : '') || '',
+      imageUrl: property.thumbnail_url || (Array.isArray(property.photos) && property.photos.length > 0 ? property.photos[0] : null),
       description: property.description || `Apartment complex in ${property.city}, ${property.state}`,
       amenities: Array.isArray(property.amenities) ? property.amenities : (typeof property.amenities === 'object' ? Object.keys(property.amenities) : []),
       contactEmail: property.email || undefined,
@@ -211,8 +244,14 @@ router.get('/:id', async (req, res, next) => {
       city: property.city || '',
       state: property.state || '',
       _units: propertyUnits,
+      _availableUnits: availableUnits,
       _priceRange: { min: minPrice, max: maxPrice },
-      _unitCount: propertyUnits.length
+      _unitCount: propertyUnits.length,
+      _availableUnitCount: availableUnits.length,
+      // Distance information
+      distanceFromCampus: distanceInfo?.nearest.distance || null,
+      nearestCampus: distanceInfo?.nearest.campus || null,
+      allCampusDistances: distanceInfo?.all || null
     };
 
     res.json(formattedListing);

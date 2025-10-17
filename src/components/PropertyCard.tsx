@@ -148,6 +148,12 @@ export function PropertyCard({ listing, className = "", onClick }: PropertyCardP
             <Bath className="h-3 w-3" />
             {L.baths} bath{L.baths !== 1 ? "s" : ""}
           </Chip>
+          {(listing as any).distanceFromCampus && (
+            <Chip variant="muted" size="sm">
+              <Globe className="h-3 w-3" />
+              {(listing as any).distanceFromCampus} mi
+            </Chip>
+          )}
         </div>
 
         <Button
