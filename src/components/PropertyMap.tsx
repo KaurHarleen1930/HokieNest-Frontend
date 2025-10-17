@@ -14,9 +14,27 @@ L.Icon.Default.mergeOptions({
 
 // VT Campus locations (DC area only)
 const VT_CAMPUSES = [
-  { name: 'VT Innovation Campus (Alexandria)', lat: 38.8051, lng: -77.0470 },
-  { name: 'VT Arlington Research Center', lat: 38.8816, lng: -77.1025 },
-  { name: 'VT Falls Church Campus', lat: 38.8842, lng: -77.1714 }
+  { 
+    name: 'VT Research Center – Arlington', 
+    lat: 38.883222, 
+    lng: -77.111517,
+    id: 'arlington',
+    radius: 2500 
+  },
+  { 
+    name: 'Washington–Alexandria Architecture Center', 
+    lat: 38.806012, 
+    lng: -77.050518,
+    id: 'alexandria',
+    radius: 2500 
+  },
+  { 
+    name: 'Academic Building One (Northern VA)', 
+    lat: 38.947211, 
+    lng: -77.336989,
+    id: 'academic',
+    radius: 3000 
+  }
 ];
 
 // Center point for DC area campuses
@@ -45,7 +63,10 @@ interface PropertyMapProps {
     max_rent?: number;
     beds?: number;
     property_type?: string;
+    campus?: string | null;
   };
+  selectedCampus?: string | null;
+  onCampusChange?: (campusId: string | null) => void;
 }
 
 export const PropertyMap: React.FC<PropertyMapProps> = ({
@@ -53,7 +74,9 @@ export const PropertyMap: React.FC<PropertyMapProps> = ({
   onPropertySelect,
   selectedProperty,
   className = '',
-  filters = {}
+  filters = {},
+  selectedCampus,
+  onCampusChange
 }) => {
   const mapRef = useRef<HTMLDivElement>(null);
   const mapInstanceRef = useRef<L.Map | null>(null);
@@ -403,6 +426,20 @@ export const PropertyMap: React.FC<PropertyMapProps> = ({
     }
   }, [properties, isLoaded]);
 
+  // Handle campus selection - center and zoom to selected campus
+  useEffect(() => {
+    if (!mapInstanceRef.current || !isLoaded || !selectedCampus) return;
+    
+    const campus = VT_CAMPUSES.find(c => c.id === selectedCampus);
+    if (campus) {
+      // Center on campus with appropriate zoom level
+      mapInstanceRef.current.setView([campus.lat, campus.lng], 13, {
+        animate: true,
+        duration: 1
+      });
+    }
+  }, [selectedCampus, isLoaded]);
+
   // Handle layer switching
   useEffect(() => {
     if (!mapInstanceRef.current || !isLoaded) return;
@@ -575,6 +612,35 @@ export const PropertyMap: React.FC<PropertyMapProps> = ({
               </button>
             </div>
           </div>
+
+          {/* Campus Selector */}
+          {onCampusChange && (
+            <div className="p-2 border-b border-gray-100">
+              <div className="flex flex-col gap-1">
+                <div className="flex items-center gap-1 mb-1">
+                  <Building className="h-3 w-3 text-orange-500" />
+                  <span className="text-xs font-medium text-gray-700">Campus Filter:</span>
+                </div>
+                <select
+                  value={selectedCampus || 'all'}
+                  onChange={(e) => onCampusChange(e.target.value === 'all' ? null : e.target.value)}
+                  className="text-xs bg-white border border-gray-300 rounded px-2 py-1 w-full"
+                >
+                  <option value="all">All Campuses</option>
+                  {VT_CAMPUSES.map((campus) => (
+                    <option key={campus.id} value={campus.id}>
+                      {campus.name}
+                    </option>
+                  ))}
+                </select>
+                {selectedCampus && (
+                  <span className="text-xs text-orange-600 font-medium">
+                    📍 Filtering nearby properties
+                  </span>
+                )}
+              </div>
+            </div>
+          )}
 
           {/* Legend - Compact */}
           <div className="p-2">

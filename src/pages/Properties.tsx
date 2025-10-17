@@ -24,6 +24,7 @@ interface Filters {
   baths: string[]; // Changed to array for multiselect
   intlFriendly: boolean;
   availableOnly: boolean; // New filter for available properties only
+  campus: string | null; // Selected campus for filtering
 }
 
 type SortOption = 'newest' | 'oldest' | 'price-low' | 'price-high' | 'name-a' | 'name-z';
@@ -75,29 +76,127 @@ export default function Properties() {
     baths: [], // Empty array for multiselect
     intlFriendly: false,
     availableOnly: false, // Show all properties by default
+    campus: null, // No campus filter by default
   });
+
+  // Campus definitions matching backend
+  const campuses = [
+    {
+      id: "arlington",
+      name: "VT Research Center – Arlington",
+      lat: 38.883222,
+      lng: -77.111517,
+      radius: 2500, // ~1.5 miles in meters
+    },
+    {
+      id: "alexandria",
+      name: "Washington–Alexandria Architecture Center",
+      lat: 38.806012,
+      lng: -77.050518,
+      radius: 2500, // ~1.5 miles
+    },
+    {
+      id: "academic",
+      name: "Academic Building One (Northern VA)",
+      lat: 38.947211,
+      lng: -77.336989,
+      radius: 3000, // ~2 miles
+    },
+  ];
 
   const [sortBy, setSortBy] = useState<SortOption>('newest');
   const [currentPage, setCurrentPage] = useState(1);
   const itemsPerPage = 15;
 
-  // ---- 1) Fetch listings ONCE from backend (no price filtering here) ----
+  // ---- 1) Fetch listings directly from Supabase (frontend) ----
   useEffect(() => {
     (async () => {
       try {
         setLoading(true);
         setError(null);
 
-        // Get all listings from backend - filtering is done on frontend
-        const data = await listingsAPI.getAll({});
-        console.log("Properties: Loaded data from backend:", data.length, "properties");
-        console.log("Properties: Sample property:", data[0]);
-        setAllListings(data);
+        // Fetch properties directly from Supabase
+        const { data: properties, error: propertiesError } = await supabase
+          .from('apartment_properties_listings')
+          .select('*')
+          .eq('is_active', true)
+          .order('created_at', { ascending: false });
 
-        // Use backend data directly - no need for frontend Supabase query
-        // Set price bounds from backend data - include properties with price 0
+        if (propertiesError) throw propertiesError;
+
+        if (!properties || properties.length === 0) {
+          setAllListings([]);
+          setBounds([0, 5000]);
+          return;
+        }
+
+        console.log("Properties: Loaded from Supabase:", properties.length, "properties");
+
+        // Get property IDs
+        const propertyIds = properties.map(p => p.id);
+
+        // Fetch units for all properties
+        const units = await fetchUnitsForProperties(propertyIds);
+
+        // Group units by property
+        const unitsByProperty = new Map();
+        (units || []).forEach(unit => {
+          if (!unitsByProperty.has(unit.property_id)) {
+            unitsByProperty.set(unit.property_id, []);
+          }
+          unitsByProperty.get(unit.property_id).push(unit);
+        });
+
+        // Build listings with unit data
+        const listings = properties.map(property => {
+          const propertyUnits = unitsByProperty.get(property.id) || [];
+
+          // Calculate price range
+          const prices = propertyUnits.map((u: any) => [u.rent_min, u.rent_max]).flat().filter((p: any) => p > 0);
+          const minPrice = prices.length > 0 ? Math.min(...prices) : 0;
+          const maxPrice = prices.length > 0 ? Math.max(...prices) : 0;
+
+          // Calculate beds/baths range
+          const beds = propertyUnits.map((u: any) => u.beds).filter((b: any) => b > 0);
+          const baths = propertyUnits.map((u: any) => u.baths).filter((b: any) => b > 0);
+          const maxBeds = beds.length > 0 ? Math.max(...beds) : 0;
+          const maxBaths = baths.length > 0 ? Math.max(...baths) : 0;
+
+          // Count available units
+          const availableUnits = propertyUnits.filter((u: any) => u.availability_status === 'available');
+
+          return {
+            id: property.id,
+            title: property.name || 'Apartment Complex',
+            price: minPrice,
+            address: property.address || '',
+            beds: maxBeds,
+            baths: maxBaths,
+            intlFriendly: property.intl_friendly || false,
+            imageUrl: property.thumbnail_url || (Array.isArray(property.photos) && property.photos.length > 0 ? property.photos[0] : null),
+            description: property.description || `Apartment complex in ${property.city}, ${property.state}`,
+            amenities: Array.isArray(property.amenities) ? property.amenities : (typeof property.amenities === 'object' ? Object.keys(property.amenities) : []),
+            contactEmail: property.email || undefined,
+            contactPhone: property.phone_number || undefined,
+            createdAt: property.created_at,
+            updatedAt: property.updated_at,
+            latitude: property.latitude || null,
+            longitude: property.longitude || null,
+            city: property.city || '',
+            state: property.state || '',
+            _units: propertyUnits,
+            _availableUnits: availableUnits,
+            _priceRange: { min: minPrice, max: maxPrice },
+            _unitCount: propertyUnits.length,
+            _availableUnitCount: availableUnits.length,
+          };
+        });
+
+        setAllListings(listings);
+
+        // Set price bounds
         let globalMin = Infinity, globalMax = -Infinity;
-        data.forEach((l: any) => {
+        listings.forEach((l: any) => {
           if (l._priceRange?.min != null && l._priceRange.min >= 0) {
             globalMin = Math.min(globalMin, l._priceRange.min);
           }
@@ -105,106 +204,35 @@ export default function Properties() {
             globalMax = Math.max(globalMax, l._priceRange.max);
           }
         });
-        
-        // If no properties have pricing data, set default bounds
+
         if (!Number.isFinite(globalMin) || !Number.isFinite(globalMax)) {
           globalMin = 0;
           globalMax = 10000;
         }
 
-        if (Number.isFinite(globalMin) && Number.isFinite(globalMax)) {
-          setBounds([globalMin, globalMax]);
-        } else {
-          setBounds([0, 5000]);
-        }
+        setBounds([globalMin, globalMax]);
 
-        // Skip the frontend Supabase query for now
-        /*
-        const ids = data.map((l: any) => l.id) as string[];
-
-        if (ids.length) {
-          const units = await fetchUnitsForProperties(ids);
-
-          const byProp = new Map<string, Stats>();
-          for (const u of units ?? []) {
-            const pid = (u as any).property_id as string;
-            const rentMin = Number((u as any).rent_min);
-            const rentMax = Number((u as any).rent_max ?? (u as any).rent_min);
-            const beds = Number((u as any).beds);
-            const baths = Number((u as any).baths);
-
-            const cur = byProp.get(pid) ?? {
-              unitsCount: 0,
-              minRent: null, maxRent: null,
-              minBeds: null, maxBeds: null,
-              minBaths: null, maxBaths: null,
-            };
-            cur.unitsCount += 1;
-            cur.minRent = cur.minRent == null ? rentMin : Math.min(cur.minRent, rentMin);
-            cur.maxRent = cur.maxRent == null ? rentMax : Math.max(cur.maxRent, rentMax);
-            cur.minBeds = cur.minBeds == null ? beds : Math.min(cur.minBeds, beds);
-            cur.maxBeds = cur.maxBeds == null ? beds : Math.max(cur.maxBeds, beds);
-            cur.minBaths = cur.minBaths == null ? baths : Math.min(cur.minBaths, baths);
-            cur.maxBaths = cur.maxBaths == null ? baths : Math.max(cur.maxBaths, baths);
-            byProp.set(pid, cur);
-          }
-
-          // global bounds for slider - use backend data first, then fallback to frontend calculation
-          let globalMin = Infinity, globalMax = -Infinity;
-
-          // Try to use backend price data first
-          data.forEach((l: any) => {
-            if (l._priceRange?.min != null) globalMin = Math.min(globalMin, l._priceRange.min);
-            if (l._priceRange?.max != null) globalMax = Math.max(globalMax, l._priceRange.max);
-          });
-
-          // Fallback to frontend calculation if backend data not available
-          if (!Number.isFinite(globalMin) || !Number.isFinite(globalMax)) {
-            byProp.forEach(s => {
-              if (s.minRent != null) globalMin = Math.min(globalMin, s.minRent);
-              if (s.maxRent != null) globalMax = Math.max(globalMax, s.maxRent);
-            });
-          }
-
-          if (!Number.isFinite(globalMin) || !Number.isFinite(globalMax)) {
-            setBounds([0, 5000]);
-          } else {
-            setBounds([globalMin, globalMax]);
-            // Don't auto-set price filters - let user choose
-            // setFilters(prev => ({
-            //   ...prev,
-            //   minPrice: prev.minPrice || String(globalMin),
-            //   maxPrice: prev.maxPrice || String(globalMax),
-            // }));
-          }
-
-          // attach stats to listings for rendering
-          setAllListings(cur =>
-            cur.map((l: any) => ({
-              ...l,
-              _stats: byProp.get(l.id) ?? {
-                unitsCount: 0,
-                minRent: null, maxRent: null,
-                minBeds: null, maxBeds: null,
-                minBaths: null, maxBaths: null,
-              },
-              // Use backend's price data if available
-              price: l._priceRange?.min || l.price || 0,
-            }))
-          );
-        } else {
-          setBounds([0, 5000]);
-        }
-        */
       } catch (e: any) {
-        setError(e?.message || "Failed to fetch properties");
+        console.error("Error fetching properties:", e);
+        setError(e?.message || "Failed to fetch properties from Supabase");
       } finally {
         setLoading(false);
       }
     })();
-    // run once on mount
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // Helper function to calculate distance between two points
+  const calculateDistance = (lat1: number, lng1: number, lat2: number, lng2: number): number => {
+    const R = 6371000; // Earth's radius in meters
+    const dLat = (lat2 - lat1) * Math.PI / 180;
+    const dLng = (lng2 - lng1) * Math.PI / 180;
+    const a = 
+      Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+      Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
+      Math.sin(dLng / 2) * Math.sin(dLng / 2);
+    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+    return R * c; // Distance in meters
+  };
 
   // ---- 3) Local filtering (slider & selects) — NO extra backend calls ----
   const filtered = useMemo(() => {
@@ -213,7 +241,7 @@ export default function Properties() {
     // If no filters are applied, use all listings
     if (filters.minPrice === "" && filters.maxPrice === "" && 
         filters.beds.length === 0 && filters.baths.length === 0 && 
-        !filters.intlFriendly && !filters.availableOnly) {
+        !filters.intlFriendly && !filters.availableOnly && !filters.campus) {
       return allListings;
     }
     
@@ -250,8 +278,19 @@ export default function Properties() {
         console.log("Properties: Filtering out property", l.title, "because _availableUnitCount:", l._availableUnitCount);
       }
       
+      // campus filter - show only properties within radius of selected campus
+      let campusOk = true;
+      if (filters.campus) {
+        const selectedCampus = campuses.find(c => c.id === filters.campus);
+        if (selectedCampus && l.latitude && l.longitude) {
+          const distance = calculateDistance(selectedCampus.lat, selectedCampus.lng, l.latitude, l.longitude);
+          campusOk = distance <= selectedCampus.radius;
+        } else {
+          campusOk = false; // If no coordinates, exclude from campus filter
+        }
+      }
 
-      return priceOk && bedsOk && bathsOk && intlOk && availabilityOk;
+      return priceOk && bedsOk && bathsOk && intlOk && availabilityOk && campusOk;
     });
 
 
@@ -320,7 +359,8 @@ export default function Properties() {
       beds: [], 
       baths: [], 
       intlFriendly: false, 
-      availableOnly: false 
+      availableOnly: false,
+      campus: null 
     });
   };
 
@@ -333,6 +373,7 @@ export default function Properties() {
       if (filters.baths.length > 0) count++;
       if (filters.intlFriendly) count++;
       if (filters.availableOnly) count++;
+      if (filters.campus) count++;
       return count;
     },
     [filters]
@@ -627,6 +668,35 @@ export default function Properties() {
                       <Label htmlFor="availableOnly" className="text-sm font-medium">Available Properties Only</Label>
                     </div>
 
+                    {/* Campus Filter */}
+                    <div className="space-y-3">
+                      <Label className="text-sm font-medium flex items-center gap-2">
+                        <Target className="h-4 w-4" />
+                        Filter by Campus
+                      </Label>
+                      <Select 
+                        value={filters.campus || "all"} 
+                        onValueChange={(value) => handleFilterChange("campus", value === "all" ? null : value)}
+                      >
+                        <SelectTrigger className="bg-surface-2 border-surface-3">
+                          <SelectValue placeholder="All Campuses" />
+                        </SelectTrigger>
+                        <SelectContent className="z-[999]">
+                          <SelectItem value="all">All Campuses</SelectItem>
+                          {campuses.map((campus) => (
+                            <SelectItem key={campus.id} value={campus.id}>
+                              {campus.name}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      {filters.campus && (
+                        <p className="text-xs text-muted">
+                          Showing properties within ~{Math.round(campuses.find(c => c.id === filters.campus)!.radius / 1609 * 10) / 10} miles
+                        </p>
+                      )}
+                    </div>
+
                     {activeFilterCount > 0 && (
                       <div className="pt-4 border-t border-surface-3">
                         <Button onClick={clearFilters} variant="outline" className="w-full">Clear All Filters</Button>
@@ -673,8 +743,11 @@ export default function Properties() {
                       max_rent: filters.maxPrice ? parseInt(filters.maxPrice) : undefined,
                       beds: filters.beds.length > 0 ? parseInt(filters.beds[0]) : undefined,
                       city: undefined,
-                      property_type: undefined
+                      property_type: undefined,
+                      campus: filters.campus
                     }}
+                    selectedCampus={filters.campus}
+                    onCampusChange={(campusId) => handleFilterChange("campus", campusId)}
                   />
                 </div>
                 <div className="space-y-4 overflow-y-auto">

@@ -10,6 +10,7 @@ const userProfileSchema = z.object({
   gender: z.enum(['male', 'female', 'nonbinary', 'other']),
   age: z.number().int().min(1).max(120),
   major: z.string().min(1, 'Major is required'),
+  primary_campus: z.enum(['arlington', 'alexandria', 'academic']).optional().nullable(),
 });
 
 const housingPreferencesSchema = z.object({
@@ -68,6 +69,7 @@ router.put('/profile', authenticateToken as any, async (req: any, res: Response,
         gender: validatedData.gender,
         age: validatedData.age,
         major: validatedData.major,
+        primary_campus: validatedData.primary_campus,
       })
       .eq('user_id', userId);
 
@@ -265,7 +267,7 @@ router.get('/profile', authenticateToken as any, async (req: any, res: Response,
     // Get user profile
     const { data: user, error: userError } = await supabase
       .from('users')
-      .select('gender, age, major')
+      .select('gender, age, major, primary_campus')
       .eq('user_id', userId)
       .single();
 

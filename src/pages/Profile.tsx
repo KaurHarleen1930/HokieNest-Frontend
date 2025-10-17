@@ -9,14 +9,21 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { User, Mail, Shield, Calendar, Edit, Save, X, Trash2, AlertTriangle } from "lucide-react";
+import { User, Mail, Shield, Calendar, Edit, Save, X, Trash2, AlertTriangle, Building2 } from "lucide-react";
 import { toast } from "sonner";
 
 interface ProfileData {
   gender: string;
   age: number;
   major: string;
+  primary_campus: string | null;
 }
+
+const CAMPUSES = [
+  { id: 'arlington', name: 'VT Research Center – Arlington' },
+  { id: 'alexandria', name: 'Washington–Alexandria Architecture Center' },
+  { id: 'academic', name: 'Academic Building One (Northern VA)' },
+];
 
 const Profile = () => {
   const { user, logout } = useAuth();
@@ -27,12 +34,14 @@ const Profile = () => {
   const [profileData, setProfileData] = useState<ProfileData>({
     gender: '',
     age: 0,
-    major: ''
+    major: '',
+    primary_campus: null
   });
   const [editData, setEditData] = useState<ProfileData>({
     gender: '',
     age: 0,
-    major: ''
+    major: '',
+    primary_campus: null
   });
 
   useEffect(() => {
@@ -53,8 +62,8 @@ const Profile = () => {
 
       if (response.ok) {
         const data = await response.json();
-        setProfileData(data.profile || { gender: '', age: 0, major: '' });
-        setEditData(data.profile || { gender: '', age: 0, major: '' });
+        setProfileData(data.profile || { gender: '', age: 0, major: '', primary_campus: null });
+        setEditData(data.profile || { gender: '', age: 0, major: '', primary_campus: null });
       }
     } catch (error) {
       console.error('Error fetching profile data:', error);
@@ -268,6 +277,40 @@ const Profile = () => {
                         {profileData.major || 'Not specified'}
                       </p>
                     )}
+                  </div>
+
+                  <div className="md:col-span-2">
+                    <Label htmlFor="campus" className="flex items-center gap-2">
+                      <Building2 className="h-4 w-4" />
+                      Primary Campus
+                    </Label>
+                    {isEditing ? (
+                      <Select 
+                        value={editData.primary_campus || 'none'} 
+                        onValueChange={(value) => setEditData({...editData, primary_campus: value === 'none' ? null : value})}
+                      >
+                        <SelectTrigger>
+                          <SelectValue placeholder="Select your primary campus" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="none">Not specified</SelectItem>
+                          {CAMPUSES.map((campus) => (
+                            <SelectItem key={campus.id} value={campus.id}>
+                              {campus.name}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    ) : (
+                      <p className="text-sm text-muted-foreground mt-1">
+                        {profileData.primary_campus 
+                          ? CAMPUSES.find(c => c.id === profileData.primary_campus)?.name 
+                          : 'Not specified'}
+                      </p>
+                    )}
+                    <p className="text-xs text-muted-foreground mt-1">
+                      This will be used to calculate commute distances and housing scores
+                    </p>
                   </div>
                 </div>
               </div>
