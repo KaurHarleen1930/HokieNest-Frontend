@@ -7,8 +7,6 @@ import { authRoutes } from './routes/auth';
 import { listingRoutes } from './routes/listings';
 import { adminRoutes } from './routes/admin';
 import { preferencesRoutes } from './routes/preferences';
-import { mapRoutes } from './routes/map';
-import rentCastRoutes from './routes/rentcast';
 import { errorHandler } from './middleware/errorHandler';
 
 dotenv.config({ path: './.env' });
@@ -22,6 +20,7 @@ app.use(cors({
   credentials: true,
 }));
 app.use(express.json());
+
 
 // Session configuration for OAuth
 app.use(session({
@@ -41,12 +40,10 @@ app.get('/health', (req, res) => {
 });
 
 // API Routes
-app.use('/api/v1/map', mapRoutes);
 app.use('/api/v1/auth', authRoutes);
 app.use('/api/v1/listings', listingRoutes);
 app.use('/api/v1/admin', adminRoutes);
 app.use('/api/v1/preferences', preferencesRoutes);
-app.use('/api/v1/rentcast', rentCastRoutes);
 
 // Error handling
 app.use(errorHandler);
@@ -59,6 +56,28 @@ app.use('*', (req, res) => {
 app.listen(PORT, () => {
   console.log(`🚀 Server running on port ${PORT}`);
   console.log(`📊 Health check: http://localhost:${PORT}/health`);
+});
+
+// Safety/reference locations for the map (idempotent)
+app.get('/api/v1/map/reference-locations', (_req, res) => {
+  res.json([
+    {
+      id: 'ref2',
+      name: 'Rosslyn Metro',
+      type: 'transit',
+      latitude: 38.8964,
+      longitude: -77.0716,
+      address: '1850 N Moore St, Arlington, VA'
+    },
+    {
+      id: 'ref3',
+      name: 'Pentagon',
+      type: 'employer',
+      latitude: 38.8719,
+      longitude: -77.0563,
+      address: 'Pentagon, Arlington, VA'
+    }
+  ]);
 });
 
 export default app;
