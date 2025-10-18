@@ -1,562 +1,664 @@
 // src/components/PropertyMap.tsx
-import React, { useEffect, useRef, useState } from "react";
-import { Listing } from "@/lib/api";
-import { MapPin, Navigation, Zap } from "lucide-react";
-import { Button } from "@/components/ui/button";
-import { Card, CardContent } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
-import { SafetyControls } from "@/components/safety/SafetyControls";
-import { supabase } from "@/lib/supabase";
-import L from "leaflet";
-import "leaflet.heat"; // heatmap plugin
-import "leaflet/dist/leaflet.css";
+import React, { useEffect, useRef, useState } from 'react';
+import L from 'leaflet';
+import 'leaflet/dist/leaflet.css';
+import 'leaflet.heat';
 
-interface PropertyMapProps {
-  properties: Listing[];
-  onPropertySelect?: (property: Listing) => void;
-  selectedProperty?: Listing;
-  className?: string;
-}
+import { mapAPI, PropertyMarker, Listing } from '@/lib/api';
+import { SafetyControls } from '@/components/safety/SafetyControls';
+import { supabase } from '@/lib/supabase';
 
-type SafetyMode = "heat" | "points";
-type Preset = "7d" | "30d" | "90d" | "1y";
+import {
+  MapPin,
+  Navigation,
+  Zap,
+  Building,
+} from 'lucide-react';
 
-type ReferenceLocation = {
-  id: string;
-  name: string;
-  type: "university" | "transit" | "employer";
-  latitude: number;
-  longitude: number;
-  address?: string;
+// --- Fix for default markers in Leaflet with Vite ---
+delete (L.Icon.Default.prototype as any)._getIconUrl;
+L.Icon.Default.mergeOptions({
+  iconRetinaUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/images/marker-icon-2x.png',
+  iconUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/images/marker-icon.png',
+  shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/images/marker-shadow.png',
+});
+
+// --- VT Campus locations (DC area only) ---
+const VT_CAMPUSES = [
+  {
+    name: 'VT Research Center – Arlington',
+    lat: 38.883222,
+    lng: -77.111517,
+    id: 'arlington',
+    radius: 2500,
+  },
+  {
+    name: 'Washington–Alexandria Architecture Center',
+    lat: 38.806012,
+    lng: -77.050518,
+    id: 'alexandria',
+    radius: 2500,
+  },
+  {
+    name: 'Academic Building One (Northern VA)',
+    lat: 38.947211,
+    lng: -77.336989,
+    id: 'academic',
+    radius: 3000,
+  },
+];
+
+// --- Center point for DC area campuses ---
+const MAP_CENTER = [38.85, -77.1] as [number, number];
+
+// --- Base map layers ---
+const mapLayers = {
+  streets: L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    attribution:
+      '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
+    maxZoom: 19,
+  }),
+  transit: L.tileLayer(
+    'https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png',
+    {
+      attribution:
+        '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>',
+      maxZoom: 19,
+    }
+  ),
 };
 
-export function PropertyMap({
-  properties,
+interface PropertyMapProps {
+  properties?: Listing[];
+  onPropertySelect?: (property: Listing) => void;
+  selectedProperty?: Listing | null;
+  className?: string;
+  filters?: {
+    city?: string;
+    min_rent?: number;
+    max_rent?: number;
+    beds?: number;
+    property_type?: string;
+    campus?: string | null;
+  };
+  selectedCampus?: string | null;
+  onCampusChange?: (campusId: string | null) => void;
+}
+
+// --- Safety types/state helpers ---
+type SafetyMode = 'heat' | 'points';
+type Preset = '7d' | '30d' | '90d' | '1y';
+const presetWindow = (p: Preset) => {
+  const to = new Date();
+  const from = new Date(to);
+  const days = p === '7d' ? 7 : p === '30d' ? 30 : p === '90d' ? 90 : 365;
+  from.setDate(to.getDate() - days);
+  return { from, to };
+};
+
+export const PropertyMap: React.FC<PropertyMapProps> = ({
+  properties = [],
   onPropertySelect,
   selectedProperty,
-  className = "",
-}: PropertyMapProps) {
+  className = '',
+  filters = {},
+  selectedCampus,
+  onCampusChange,
+}) => {
+  // --- Map refs/state ---
   const mapRef = useRef<HTMLDivElement>(null);
-  const [map, setMap] = useState<L.Map | null>(null);
+  const mapInstanceRef = useRef<L.Map | null>(null);
+  const activeBaseLayerRef = useRef<L.TileLayer | null>(null);
 
-  // markers (Leaflet)
-  const [propertyMarkers, setPropertyMarkers] = useState<L.Marker[]>([]);
-  const [selectedPopup, setSelectedPopup] = useState<L.Popup | null>(null);
+  const markersRef = useRef<L.Marker[]>([]);
+  const vtMarkersRef = useRef<L.Marker[]>([]);
+  const referenceMarkersRef = useRef<L.Marker[]>([]);
 
-  // errors / status
-  const [mapError, setMapError] = useState<string | null>(null);
   const [isLoaded, setIsLoaded] = useState(false);
+  const [mapProperties, setMapProperties] = useState<PropertyMarker[]>([]);
+  const [referenceLocations, setReferenceLocations] = useState<any[]>([]);
+  const [currentLayer, setCurrentLayer] = useState<'streets' | 'transit'>('streets');
+  const [showVTMarkers, setShowVTMarkers] = useState(true);
+  const [showReferenceMarkers, setShowReferenceMarkers] = useState(true);
+
+  // --- Safety state/refs (from Mohammad) ---
+  const [safetyOn, setSafetyOn] = useState(false);
+  const [safetyMode, setSafetyMode] = useState<SafetyMode>('heat');
+  const [preset, setPreset] = useState<Preset>('30d');
   const [incidentCount, setIncidentCount] = useState<number | null>(null);
-
-  // safety controls
-  const [safetyOn, setSafetyOn] = useState(true);
-  const [safetyMode, setSafetyMode] = useState<SafetyMode>("heat");
-  const [preset, setPreset] = useState<Preset>("30d");
-
-  // safety layers
   const heatLayerRef = useRef<any>(null);
   const pointsLayerRef = useRef<L.LayerGroup | null>(null);
+  const [bbox, setBbox] = useState<[number, number, number, number] | null>(null);
 
-  // bbox tracker
-  const [bbox, setBbox] = useState<[number, number, number, number] | null>(
-    null
-  );
-
-  // reference locations
-  const [referenceLocations, setReferenceLocations] = useState<
-    ReferenceLocation[]
-  >([]);
-  const [showReferenceLocations, setShowReferenceLocations] = useState(true);
-
-  // DC Metro area center (between Alexandria and Arlington VT campuses)
-  const DC_METRO_CENTER = { lat: 38.8339, lng: -77.0648 };
-
-  // VT Campus locations
-  const VT_CAMPUSES = [
-    { name: "VT Alexandria Campus", lat: 38.8051, lng: -77.047 },
-    { name: "VT Arlington Campus", lat: 38.8816, lng: -77.1025 },
-  ];
-
-  function presetWindow(p: Preset) {
-    const to = new Date();
-    const from = new Date(to);
-    const days = p === "7d" ? 7 : p === "30d" ? 30 : p === "90d" ? 90 : 365;
-    from.setDate(to.getDate() - days);
-    return { from, to };
-  }
-
-  // init Leaflet map
+  // --- Initialize map ---
   useEffect(() => {
-    if (typeof window === "undefined" || !mapRef.current || map) return;
+    if (!mapRef.current || mapInstanceRef.current) return;
 
-    try {
-      // Fix default marker icon URLs for bundlers
-      // @ts-ignore
-      delete L.Icon.Default.prototype._getIconUrl;
-      L.Icon.Default.mergeOptions({
-        iconRetinaUrl:
-          "https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon-2x.png",
-        iconUrl: "https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon.png",
-        shadowUrl:
-          "https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png",
-      });
+    const map = L.map(mapRef.current).setView(MAP_CENTER, 11);
+    mapInstanceRef.current = map;
 
-      const leafletMap = L.map(mapRef.current!, {
-        center: [DC_METRO_CENTER.lat, DC_METRO_CENTER.lng],
-        zoom: 11,
-        zoomControl: true,
-        scrollWheelZoom: true,
-      });
+    // add default base layer
+    activeBaseLayerRef.current = mapLayers.streets.addTo(map);
 
-      L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
-        attribution:
-          '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
-        maxZoom: 19,
-      }).addTo(leafletMap);
-
-      // initial bbox
-      const b0 = leafletMap.getBounds();
-      setBbox([b0.getWest(), b0.getSouth(), b0.getEast(), b0.getNorth()]);
-      leafletMap.on("moveend", () => {
-        const b = leafletMap.getBounds();
-        setBbox([b.getWest(), b.getSouth(), b.getEast(), b.getNorth()]);
-      });
-
-      setMap(leafletMap);
-      setIsLoaded(true);
-
-      // add VT campus pins
-      VT_CAMPUSES.forEach((c) => {
-        L.marker([c.lat, c.lng], {
-          title: c.name,
-        })
-          .addTo(leafletMap)
-          .bindTooltip(c.name, { direction: "top", offset: L.point(0, -8) });
-      });
-
-      // fetch reference locations (fallback if API fails)
-      fetchReferenceLocations().catch(() => {});
-
-      return () => {
-        leafletMap.remove();
-        setMap(null);
-      };
-    } catch (err) {
-      console.error("Error initializing map:", err);
-      setMapError("Failed to load map. Please refresh the page.");
-    }
-  }, []);
-
-  // draw safety layer whenever dependencies change
-  useEffect(() => {
-    if (map && isLoaded) renderSafetyLayer(map);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [map, isLoaded, safetyOn, safetyMode, preset, bbox]);
-
-  // add/update property markers
-  useEffect(() => {
-    if (!map || !isLoaded) return;
-
-    // clear previous property markers
-    propertyMarkers.forEach((m) => m.remove());
-    setPropertyMarkers([]);
-
-    if (selectedPopup) {
-      selectedPopup.remove();
-      setSelectedPopup(null);
-    }
-
-    // helper: price bubble as divIcon
-    const divIconForProperty = (price: number, isSelected: boolean) =>
-      L.divIcon({
-        className: "hn-price-pin",
-        html: `
-          <div style="
-            display:inline-flex;align-items:center;justify-content:center;
-            width:40px;height:40px;border-radius:50%;
-            background:${isSelected ? "#E87722" : "#630031"};
-            color:#fff;border:3px solid #fff;font-weight:700;font-size:12px;
-            box-shadow:0 2px 6px rgba(0,0,0,0.25);
-          ">
-            $${Math.floor(price)}
-          </div>
-        `,
-        iconSize: [40, 40],
-        iconAnchor: [20, 20],
-      });
-
-    const newMarkers: L.Marker[] = [];
-
-    properties.forEach((p) => {
-      // use property coords if present, else jitter around center (demo)
-      const lat =
-        (p as any).latitude ??
-        DC_METRO_CENTER.lat + (Math.random() - 0.5) * 0.2;
-      const lng =
-        (p as any).longitude ??
-        DC_METRO_CENTER.lng + (Math.random() - 0.5) * 0.2;
-
-      const isSel = selectedProperty?.id === p.id;
-      const marker = L.marker([lat, lng], {
-        icon: divIconForProperty(p.price, isSel),
-        title: p.title,
-      });
-
-      const popupHtml = `
-        <div style="padding: 12px; max-width: 260px;">
-          <h3 style="margin: 0 0 8px 0; color: #630031; font-weight: bold;">${p.title}</h3>
-          <p style="margin: 0 0 8px 0; color: #666; font-size: 14px;">${p.address ?? ""}</p>
-          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
-            <span style="font-weight: bold; color: #E87722; font-size: 18px;">$${p.price}/month</span>
-            <div style="display: flex; gap: 8px; font-size: 12px; color: #666;">
-              <span>${p.beds ?? "-"} beds</span>
-              <span>${p.baths ?? "-"} baths</span>
-            </div>
-          </div>
-          ${p.intlFriendly ? '<span style="background: #E87722; color: white; padding: 2px 6px; border-radius: 4px; font-size: 11px;">Intl Friendly</span>' : ""}
-        </div>
-      `;
-
-      marker.on("click", () => {
-        if (selectedPopup) selectedPopup.remove();
-        const popup = L.popup({ autoPan: true })
-          .setLatLng([lat, lng])
-          .setContent(popupHtml)
-          .openOn(map);
-        setSelectedPopup(popup);
-        onPropertySelect?.(p);
-      });
-
-      marker.addTo(map);
-      newMarkers.push(marker);
+    // track bbox for safety queries
+    const b0 = map.getBounds();
+    setBbox([b0.getWest(), b0.getSouth(), b0.getEast(), b0.getNorth()]);
+    map.on('moveend', () => {
+      const b = map.getBounds();
+      setBbox([b.getWest(), b.getSouth(), b.getEast(), b.getNorth()]);
     });
 
-    setPropertyMarkers(newMarkers);
-  }, [map, isLoaded, properties, selectedProperty]);
+    setIsLoaded(true);
 
-  // draw / update safety overlay
-  const renderSafetyLayer = async (currentMap: L.Map) => {
-    // clear old
+    return () => {
+      map.remove();
+      mapInstanceRef.current = null;
+    };
+  }, []);
+
+  // --- Fetch map data ---
+  useEffect(() => {
+    const fetchMapData = async () => {
+      try {
+        const [propertiesData, referenceData] = await Promise.all([
+          mapAPI.getMapMarkers(filters),
+          mapAPI.getReferenceLocations(),
+        ]);
+        setMapProperties(propertiesData);
+        setReferenceLocations(referenceData);
+      } catch (error) {
+        console.error('PropertyMap: Error fetching map data:', error);
+      }
+    };
+    fetchMapData();
+  }, [filters]);
+
+  // --- Add VT campus markers ---
+  const addVTCampusMarkers = (map: L.Map) => {
+    VT_CAMPUSES.forEach((campus) => {
+      const vtIcon = L.divIcon({
+        className: 'custom-vt-marker',
+        html: `
+          <div style="
+            background:#E87722;border:2px solid white;border-radius:50%;
+            width:32px;height:32px;display:flex;align-items:center;justify-content:center;
+            font-weight:bold;color:white;font-size:10px;box-shadow:0 2px 4px rgba(0,0,0,0.3);
+          ">VT</div>
+        `,
+        iconSize: [32, 32],
+        iconAnchor: [16, 16],
+      });
+
+      const marker = L.marker([campus.lat, campus.lng], { icon: vtIcon })
+        .addTo(map)
+        .bindPopup(`
+          <div class="p-2">
+            <h3 class="font-bold text-orange-600">${campus.name}</h3>
+            <p class="text-sm text-gray-600">Virginia Tech Campus</p>
+          </div>
+        `);
+      vtMarkersRef.current.push(marker);
+    });
+  };
+
+  // --- Add reference location markers ---
+  const addReferenceLocationMarkers = (map: L.Map) => {
+    referenceLocations.forEach((location) => {
+      const getIcon = (type: string) => {
+        const color =
+          type === 'university' ? '#3B82F6' : type === 'transit' ? '#10B981' : '#8B5CF6';
+        return L.divIcon({
+          className: 'custom-reference-marker',
+          html: `
+            <div style="
+              background:${color};border:2px solid white;border-radius:50%;
+              width:24px;height:24px;display:flex;align-items:center;justify-content:center;
+              color:white;font-size:10px;box-shadow:0 2px 4px rgba(0,0,0,0.3);
+            ">
+              ${type === 'university' ? 'U' : type === 'transit' ? 'T' : 'E'}
+            </div>
+          `,
+          iconSize: [24, 24],
+          iconAnchor: [12, 12],
+        });
+      };
+
+      const marker = L.marker([location.latitude, location.longitude], {
+        icon: getIcon(location.type),
+      })
+        .addTo(map)
+        .bindPopup(`
+          <div class="p-2">
+            <h3 class="font-bold">${location.name}</h3>
+            <p class="text-sm text-gray-600">${location.type}</p>
+            ${location.address ? `<p class="text-xs text-gray-500">${location.address}</p>` : ''}
+          </div>
+        `);
+
+      referenceMarkersRef.current.push(marker);
+    });
+  };
+
+  // --- Create/refresh property markers ---
+  useEffect(() => {
+    if (!mapInstanceRef.current || !isLoaded) return;
+    const map = mapInstanceRef.current;
+
+    // clear old markers
+    markersRef.current.forEach((m) => map.removeLayer(m));
+    markersRef.current = [];
+
+    const propertiesToShow =
+      mapProperties.length > 0 ? mapProperties : (properties || []);
+
+    const isDetailPage = propertiesToShow.length === 1;
+
+    propertiesToShow.forEach((property) => {
+      if (!property.latitude || !property.longitude) return;
+
+      const isSelected = selectedProperty?.id === property.id;
+      const title = (property as any).name || (property as any).title || 'Property';
+      const address = property.address;
+      const price = (property as any).rent_min || (property as any).price || 0;
+
+      const propertyIcon = L.divIcon({
+        className: 'custom-property-marker',
+        html: isDetailPage
+          ? `
+            <div style="
+              background:#E87722;border:3px solid white;border-radius:50% 50% 50% 0;
+              width:30px;height:30px;display:flex;align-items:center;justify-content:center;
+              color:white;font-size:16px;font-weight:bold;box-shadow:0 4px 8px rgba(0,0,0,0.3);
+              transform:rotate(-45deg);
+            ">
+              <span style="transform:rotate(45deg);">📍</span>
+            </div>
+          `
+          : `
+            <div style="
+              background:${isSelected ? '#E87722' : '#3B82F6'};
+              border:2px solid white;border-radius:50%;
+              width:${isSelected ? '24px' : '20px'};
+              height:${isSelected ? '24px' : '20px'};
+              display:flex;align-items:center;justify-content:center;
+              color:white;font-size:10px;font-weight:bold;box-shadow:0 2px 4px rgba(0,0,0,0.3);
+              transform:${isSelected ? 'scale(1.2)' : 'scale(1)'};
+            ">
+              ${isSelected ? '★' : 'P'}
+            </div>
+          `,
+        iconSize: isDetailPage ? [30, 30] : isSelected ? [24, 24] : [20, 20],
+        iconAnchor: isDetailPage ? [15, 30] : isSelected ? [12, 12] : [10, 10],
+      });
+
+      const marker = L.marker([property.latitude, property.longitude], {
+        icon: propertyIcon,
+      })
+        .addTo(map)
+        .bindPopup(`
+          <div class="p-3 min-w-[200px]">
+            <h3 class="font-bold text-lg mb-2">${title}</h3>
+            <p class="text-sm text-gray-600 mb-2">${address ?? ''}</p>
+            <p class="text-lg font-bold text-orange-600 mb-2">
+              ${price > 0 ? `$${price.toLocaleString()}/mo` : 'Call for pricing'}
+            </p>
+            <div class="flex gap-2 mb-3">
+              <span class="px-2 py-1 bg-blue-100 text-blue-800 rounded text-xs">
+                ${(property as any).beds || 0} bed${(property as any).beds !== 1 ? 's' : ''}
+              </span>
+              <span class="px-2 py-1 bg-green-100 text-green-800 rounded text-xs">
+                ${(property as any).baths || 0} bath${(property as any).baths !== 1 ? 's' : ''}
+              </span>
+            </div>
+            ${(property as any).distanceFromCampus
+              ? `<div class="text-xs text-gray-600 mb-2">📍 ${(property as any).distanceFromCampus} miles from ${(property as any).nearestCampus?.name || 'VT Campus'}</div>`
+              : ''
+            }
+            <button
+              onclick="selectProperty('${property.id}')"
+              class="w-full bg-orange-500 text-white px-3 py-2 rounded text-sm hover:bg-orange-600 transition-colors"
+            >
+              View Details
+            </button>
+          </div>
+        `);
+
+      marker.on('click', () => {
+        onPropertySelect?.(property as any);
+        if (!isDetailPage && mapInstanceRef.current) {
+          mapInstanceRef.current.setView([property.latitude!, property.longitude!], 16, {
+            animate: true,
+            duration: 1,
+          } as any);
+        }
+      });
+
+      markersRef.current.push(marker);
+    });
+
+    // fit bounds logic
+    if (propertiesToShow.length > 0 && propertiesToShow.some((p) => p.latitude && p.longitude)) {
+      if (isDetailPage) {
+        const property = propertiesToShow[0];
+        map.setView([property.latitude!, property.longitude!], 16);
+        setTimeout(() => {
+          if (mapInstanceRef.current) {
+            mapInstanceRef.current.setView([property.latitude!, property.longitude!], 16);
+          }
+        }, 100);
+      } else {
+        const group = new L.FeatureGroup(markersRef.current);
+        map.fitBounds(group.getBounds().pad(0.1));
+      }
+    }
+
+    // global helper for popup button
+    (window as any).selectProperty = (propertyId: string) => {
+      const property = propertiesToShow.find((p) => p.id === propertyId);
+      if (property && onPropertySelect) onPropertySelect(property as any);
+    };
+  }, [mapProperties, properties, selectedProperty, isLoaded, onPropertySelect]);
+
+  // --- Detail page re-center safeguard ---
+  useEffect(() => {
+    if (!mapInstanceRef.current || !isLoaded) return;
+    const isDetailPage = properties.length === 1;
+    if (isDetailPage && properties[0]?.latitude && properties[0]?.longitude) {
+      const p = properties[0];
+      mapInstanceRef.current.setView([p.latitude, p.longitude], 16);
+    }
+  }, [properties, isLoaded]);
+
+  // --- Campus selection centers map ---
+  useEffect(() => {
+    if (!mapInstanceRef.current || !isLoaded || !selectedCampus) return;
+    const campus = VT_CAMPUSES.find((c) => c.id === selectedCampus);
+    if (campus) {
+      mapInstanceRef.current.setView([campus.lat, campus.lng], 13, { animate: true, duration: 1 } as any);
+    }
+  }, [selectedCampus, isLoaded]);
+
+  // --- Base layer switching ---
+  useEffect(() => {
+    const map = mapInstanceRef.current;
+    if (!map || !isLoaded) return;
+
+    if (activeBaseLayerRef.current) {
+      map.removeLayer(activeBaseLayerRef.current);
+    }
+    const next = currentLayer === 'streets' ? mapLayers.streets : mapLayers.transit;
+    next.addTo(map);
+    activeBaseLayerRef.current = next;
+  }, [currentLayer, isLoaded]);
+
+  // --- Toggle VT markers ---
+  useEffect(() => {
+    const map = mapInstanceRef.current;
+    if (!map || !isLoaded) return;
+
+    vtMarkersRef.current.forEach((m) => map.removeLayer(m));
+    vtMarkersRef.current = [];
+    if (showVTMarkers) addVTCampusMarkers(map);
+  }, [showVTMarkers, isLoaded]);
+
+  // --- Toggle reference markers ---
+  useEffect(() => {
+    const map = mapInstanceRef.current;
+    if (!map || !isLoaded) return;
+
+    referenceMarkersRef.current.forEach((m) => map.removeLayer(m));
+    referenceMarkersRef.current = [];
+    if (showReferenceMarkers && referenceLocations.length > 0) {
+      addReferenceLocationMarkers(map);
+    }
+  }, [showReferenceMarkers, referenceLocations, isLoaded]);
+
+  // --- Safety overlay render/update ---
+  useEffect(() => {
+    const map = mapInstanceRef.current;
+    if (!map || !bbox) return;
+
+    // clear old safety layers
     if (heatLayerRef.current) {
-      heatLayerRef.current.remove();
+      map.removeLayer(heatLayerRef.current);
       heatLayerRef.current = null;
     }
     if (pointsLayerRef.current) {
-      pointsLayerRef.current.remove();
+      map.removeLayer(pointsLayerRef.current);
       pointsLayerRef.current = null;
     }
 
-    if (!safetyOn || !bbox) {
+    if (!safetyOn) {
       setIncidentCount(null);
       return;
     }
 
-    const { from, to } = presetWindow(preset);
-    const [west, south, east, north] = bbox;
+    const run = async () => {
+      const { from, to } = presetWindow(preset);
+      const [west, south, east, north] = bbox!;
+      const { data, error } = await supabase.rpc('incidents_geojson', {
+        start_ts: from.toISOString(),
+        end_ts: to.toISOString(),
+        min_lat: south,
+        min_lng: west,
+        max_lat: north,
+        max_lng: east,
+        limit_rows: 5000,
+      });
 
-    const { data, error } = await supabase.rpc("incidents_geojson", {
-      start_ts: from.toISOString(),
-      end_ts: to.toISOString(),
-      min_lat: south,
-      min_lng: west,
-      max_lat: north,
-      max_lng: east,
-      limit_rows: 5000,
-    });
+      if (error || !data) {
+        console.warn('incidents_geojson error', error);
+        setIncidentCount(null);
+        return;
+      }
 
-    if (error || !data) {
-      console.warn("incidents_geojson error", error);
-      setIncidentCount(null);
-      return;
-    }
+      const features: any[] = Array.isArray(data.features) ? data.features : [];
+      const count = features.length;
+      setIncidentCount(count);
+      if (count === 0) return;
 
-    const features: any[] = Array.isArray(data.features) ? data.features : [];
-    const count = features.length;
-    setIncidentCount(count);
-    if (count === 0) return;
-
-    if (safetyMode === "heat") {
-      const pts =
-        features.map((f: any) => {
+      if (safetyMode === 'heat') {
+        const pts = features.map((f: any) => {
           const [lng, lat] = f.geometry.coordinates;
-          const w = Math.max(
-            0.2,
-            Math.min(1, (f.properties?.severity ?? 1) / 3)
-          );
+          const w = Math.max(0.2, Math.min(1, (f.properties?.severity ?? 1) / 3));
           return [lat, lng, w] as [number, number, number];
-        }) ?? [];
-      const layer = (L as any).heatLayer(pts, { radius: 18 });
-      layer.addTo(currentMap);
-      heatLayerRef.current = layer;
-    } else {
-      const g = L.layerGroup();
-      features.forEach((f: any) => {
-        const [lng, lat] = f.geometry.coordinates;
-        const sev = f.properties?.severity ?? 0;
-        const color =
-          sev >= 3
-            ? "#dc2626"
-            : sev === 2
-            ? "#f59e0b"
-            : sev === 1
-            ? "#22c55e"
-            : "#6b7280";
-        const m = L.circleMarker([lat, lng], {
-          radius: 6,
-          color,
-          weight: 1,
-          fillOpacity: 0.85,
         });
-        const html = `
-          <div style="min-width:180px">
-            <div style="font-weight:600">${f.properties?.type ?? "Incident"}</div>
-            <div style="font-size:12px;color:#555">${new Date(
-              f.properties?.occurred_at
-            ).toLocaleString()}</div>
-            ${
-              f.properties?.details?.BLOCK
-                ? `<div style="font-size:12px;margin-top:4px">${f.properties.details.BLOCK}</div>`
-                : ""
-            }
-            ${
-              f.properties?.source
-                ? `<div style="font-size:11px;color:#777;margin-top:4px">Source: ${f.properties.source}</div>`
-                : ""
-            }
-          </div>
-        `;
-        m.bindPopup(html);
-        m.addTo(g);
-      });
-      g.addTo(currentMap);
-      pointsLayerRef.current = g;
-    }
-  };
-
-  // fetch reference locations
-  const fetchReferenceLocations = async () => {
-    try {
-      const response = await fetch(
-        "http://localhost:4000/api/v1/map/reference-locations"
-      );
-      if (!response.ok) throw new Error("bad status");
-      const data = (await response.json()) as ReferenceLocation[];
-      setReferenceLocations(data);
-    } catch (e) {
-      // fallback
-      setReferenceLocations([
-        {
-          id: "ref1",
-          name: "George Mason University",
-          type: "university",
-          latitude: 38.8297,
-          longitude: -77.308,
-          address: "4400 University Dr, Fairfax, VA",
-        },
-        {
-          id: "ref2",
-          name: "Rosslyn Metro",
-          type: "transit",
-          latitude: 38.8964,
-          longitude: -77.0716,
-          address: "1850 N Moore St, Arlington, VA",
-        },
-        {
-          id: "ref3",
-          name: "Pentagon",
-          type: "employer",
-          latitude: 38.8719,
-          longitude: -77.0563,
-          address: "Pentagon, Arlington, VA",
-        },
-      ]);
-    }
-  };
-
-  // draw reference locations when they change
-  useEffect(() => {
-    if (!map || !isLoaded) return;
-
-    // remove existing ref markers by storing them if you want to toggle precisely.
-    // Quick approach: rebuild a layer group each time.
-    const layer = L.layerGroup();
-
-    if (showReferenceLocations) {
-      referenceLocations.forEach((r) => {
-        const color =
-          r.type === "university"
-            ? "#3b82f6"
-            : r.type === "transit"
-            ? "#10b981"
-            : "#a855f7";
-
-        const icon = L.divIcon({
-          className: "hn-ref-pin",
-          html: `
-            <div style="
-              width:18px;height:18px;border-radius:50%;
-              display:flex;align-items:center;justify-content:center;
-              background:${color};border:2px solid white;
-              font-size:10px;color:#fff;">${
-                r.type === "university" ? "🎓" : r.type === "transit" ? "🚇" : "🏢"
-              }</div>
-          `,
-          iconSize: [18, 18],
-          iconAnchor: [9, 9],
+        const layer = (L as any).heatLayer(pts, { radius: 18 });
+        layer.addTo(map);
+        heatLayerRef.current = layer;
+      } else {
+        const g = L.layerGroup();
+        features.forEach((f: any) => {
+          const [lng, lat] = f.geometry.coordinates;
+          const sev = f.properties?.severity ?? 0;
+          const color = sev >= 3 ? '#dc2626' : sev === 2 ? '#f59e0b' : sev === 1 ? '#22c55e' : '#6b7280';
+          L.circleMarker([lat, lng], { radius: 6, color, weight: 1, fillOpacity: 0.85 })
+            .bindPopup(`
+              <div style="min-width:180px">
+                <div style="font-weight:600">${f.properties?.type ?? 'Incident'}</div>
+                <div style="font-size:12px;color:#555">${new Date(f.properties?.occurred_at).toLocaleString()}</div>
+                ${
+                  f.properties?.details?.BLOCK
+                    ? `<div style="font-size:12px;margin-top:4px">${f.properties.details.BLOCK}</div>`
+                    : ''
+                }
+                ${f.properties?.source ? `<div style="font-size:11px;color:#777;margin-top:4px">Source: ${f.properties.source}</div>` : ''}
+              </div>
+            `)
+            .addTo(g);
         });
-
-        L.marker([r.latitude, r.longitude], { icon })
-          .addTo(layer)
-          .bindTooltip(`${r.name}${r.address ? " — " + r.address : ""}`, {
-            direction: "top",
-            offset: L.point(0, -8),
-          });
-      });
-    }
-
-    layer.addTo(map);
-    return () => {
-      layer.remove();
+        g.addTo(map);
+        pointsLayerRef.current = g;
+      }
     };
-  }, [map, isLoaded, referenceLocations, showReferenceLocations]);
+
+    run();
+  }, [safetyOn, safetyMode, preset, bbox, isLoaded]);
+
+  // --- Small helpers for her controls ---
+  const centerMap = () => {
+    if (mapInstanceRef.current) mapInstanceRef.current.setView(MAP_CENTER, 11);
+  };
+  const fitToMarkers = () => {
+    const map = mapInstanceRef.current;
+    if (!map || markersRef.current.length === 0) return;
+    const group = new L.FeatureGroup(markersRef.current);
+    map.fitBounds(group.getBounds().pad(0.1));
+  };
 
   return (
-    <div className={`relative ${className}`}>
-      <div ref={mapRef} className="w-full h-[560px] md:h-[640px] rounded-lg" />
+    <div className={`relative ${className}`} style={{ isolation: 'isolate', zIndex: 1 }}>
+      {/* Map Container */}
+      <div
+        ref={mapRef}
+        className="w-full h-full rounded-lg overflow-hidden relative z-0"
+        style={{ zIndex: 0, minHeight: '600px', backgroundColor: '#f0f0f0' }}
+      />
 
-      {/* Map status / errors */}
-      {mapError && (
-        <div className="absolute top-4 left-1/2 -translate-x-1/2 bg-destructive text-destructive-foreground px-3 py-2 rounded shadow">
-          {mapError}
+      {/* Loading Overlay */}
+      {!isLoaded && (
+        <div className="absolute inset-0 bg-white bg-opacity-75 flex items-center justify-center rounded-lg z-10">
+          <div className="text-center">
+            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-orange-500 mx-auto mb-2"></div>
+            <p className="text-sm text-gray-600">Loading map...</p>
+          </div>
         </div>
       )}
 
-      {/* Top-left badges & controls */}
-      <div className="absolute top-4 left-4 z-[1000] flex flex-col gap-2">
-        <Badge variant="secondary" className="bg-background/95 backdrop-blur-sm shadow-lg">
-          <MapPin className="h-3 w-3 mr-1" />
-          {properties.filter((p: any) => p.latitude && p.longitude).length ||
-            properties.length}{" "}
-          properties
-        </Badge>
-
-        {incidentCount !== null && safetyOn && (
-          <Badge variant="secondary" className="bg-background/95 backdrop-blur-sm shadow-lg">
-            {incidentCount} incidents in view
-          </Badge>
-        )}
-      </div>
-
-      {/* Safety Controls */}
-      <div className="absolute top-20 left-4 z-[1100]">
-        <SafetyControls
-          enabled={safetyOn}
-          onToggle={setSafetyOn}
-          preset={preset}
-          onPresetChange={(p) => setPreset(p)}
-          mode={safetyMode === "heat" ? "heat" : "clusters"}
-          onModeChange={(m) => setSafetyMode(m === "heat" ? "heat" : "points")}
-        />
-      </div>
-
-      {/* Right-side quick toggles */}
-      <div className="absolute top-4 right-4 flex flex-col gap-2 z-[1000]">
-        <Button
-          variant="outline"
-          size="sm"
-          className="bg-background/80 backdrop-blur-sm"
-          onClick={() => setShowReferenceLocations((v) => !v)}
-        >
-          <Navigation className="h-4 w-4 mr-2" />
-          {showReferenceLocations ? "Hide" : "Show"} refs
-        </Button>
-      </div>
-
-      {/* Legend */}
-      <div className="absolute bottom-4 left-4 bg-background/95 backdrop-blur-sm rounded-lg border p-3 shadow-lg z-[1000]">
-        <div className="space-y-2 text-xs">
-          <div className="flex items-center gap-2">
-            <div className="w-4 h-4 rounded-full bg-primary border-2 border-white"></div>
-            <span className="text-foreground">Properties</span>
+      {/* Map Controls Panel */}
+      <div className="absolute top-2 left-2 z-[110]">
+        <div className="bg-white rounded-lg shadow-lg border border-gray-200 overflow-hidden">
+          {/* Layer Controls */}
+          <div className="p-2 border-b border-gray-100">
+            <div className="flex items-center gap-1">
+              <Navigation className="h-3 w-3 text-orange-500" />
+              <span className="text-xs font-medium text-gray-700">Layers:</span>
+              <button
+                onClick={() => setCurrentLayer('streets')}
+                className={`px-2 py-1 text-xs rounded transition-colors ${
+                  currentLayer === 'streets' ? 'bg-orange-500 text-white' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                }`}
+              >
+                Streets
+              </button>
+              <button
+                onClick={() => setCurrentLayer('transit')}
+                className={`px-2 py-1 text-xs rounded transition-colors ${
+                  currentLayer === 'transit' ? 'bg-orange-500 text-white' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                }`}
+              >
+                Transit
+              </button>
+            </div>
           </div>
 
-          {showReferenceLocations && (
-            <>
-              <div className="flex items-center gap-2">
-                <div className="w-4 h-4 rounded-full bg-blue-500 border-2 border-white flex items-center justify-center text-[8px]">
-                  🎓
-                </div>
-                <span className="text-foreground">Universities</span>
-              </div>
-              <div className="flex items-center gap-2">
-                <div className="w-4 h-4 rounded-full bg-green-500 border-2 border-white flex items-center justify-center text-[8px]">
-                  🚇
-                </div>
-                <span className="text-foreground">Transit</span>
-              </div>
-              <div className="flex items-center gap-2">
-                <div className="w-4 h-4 rounded-full bg-purple-500 border-2 border-white flex items-center justify-center text-[8px]">
-                  🏢
-                </div>
-                <span className="text-foreground">Employers</span>
-              </div>
-            </>
-          )}
+          {/* Map Controls */}
+          <div className="p-2 border-b border-gray-100">
+            <div className="flex items-center gap-1">
+              <Zap className="h-3 w-3 text-blue-500" />
+              <span className="text-xs font-medium text-gray-700">Controls:</span>
+              <button
+                onClick={centerMap}
+                className="px-2 py-1 text-xs bg-gray-100 text-gray-700 rounded hover:bg-gray-200 transition-colors"
+              >
+                Center
+              </button>
+              <button
+                onClick={fitToMarkers}
+                className="px-2 py-1 text-xs bg-gray-100 text-gray-700 rounded hover:bg-gray-200 transition-colors"
+              >
+                Fit
+              </button>
+            </div>
+          </div>
 
-          {safetyOn && (
-            <>
-              <div className="h-px bg-muted my-2" />
-              <div className="font-medium text-xs mb-1">Safety incidents</div>
-              {safetyMode === "heat" ? (
-                <>
-                  <div
-                    className="h-2 w-44 rounded"
-                    style={{
-                      background:
-                        "linear-gradient(90deg,#440154 0%,#414487 25%,#2A788E 50%,#22A884 75%,#FDE725 100%)",
-                    }}
-                  />
-                  <div className="flex justify-between text-[10px] mt-1 text-muted-foreground">
-                    <span>Low</span>
-                    <span>High</span>
-                  </div>
-                </>
-              ) : (
-                <div className="space-y-1 text-xs">
-                  <div className="flex items-center gap-2">
-                    <span
-                      className="inline-block w-3 h-3 rounded-full"
-                      style={{ background: "#22c55e" }}
-                    />
-                    <span>Severity 1 – Low</span>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <span
-                      className="inline-block w-3 h-3 rounded-full"
-                      style={{ background: "#f59e0b" }}
-                    />
-                    <span>Severity 2 – Moderate</span>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <span
-                      className="inline-block w-3 h-3 rounded-full"
-                      style={{ background: "#dc2626" }}
-                    />
-                    <span>Severity 3 – High</span>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <span
-                      className="inline-block w-3 h-3 rounded-full"
-                      style={{ background: "#90a4ae" }}
-                    />
-                    <span>Unknown</span>
-                  </div>
-                </div>
-              )}
-            </>
-          )}
+          {/* VT & Reference Toggles */}
+          <div className="p-2 border-b border-gray-100">
+            <div className="flex items-center gap-1">
+              <Building className="h-3 w-3 text-purple-500" />
+              <span className="text-xs font-medium text-gray-700">VT:</span>
+              <button
+                onClick={() => setShowVTMarkers((v) => !v)}
+                className={`px-2 py-1 text-xs rounded transition-colors ${
+                  showVTMarkers ? 'bg-purple-500 text-white' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                }`}
+              >
+                {showVTMarkers ? 'Hide' : 'Show'}
+              </button>
+
+              <MapPin className="h-3 w-3 text-green-500 ml-1" />
+              <span className="text-xs font-medium text-gray-700">Ref:</span>
+              <button
+                onClick={() => setShowReferenceMarkers((v) => !v)}
+                className={`px-2 py-1 text-xs rounded transition-colors ${
+                  showReferenceMarkers ? 'bg-green-500 text-white' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                }`}
+              >
+                {showReferenceMarkers ? 'Hide' : 'Show'}
+              </button>
+            </div>
+          </div>
+
+          {/* Legend (compact) */}
+          <div className="p-2">
+            <div className="flex items-center gap-1 mb-1">
+              <MapPin className="h-3 w-3 text-gray-500" />
+              <span className="text-xs font-medium text-gray-700">Legend:</span>
+            </div>
+            <div className="grid grid-cols-2 gap-1 text-xs text-gray-600">
+              <div className="flex items-center gap-1">
+                <div className="w-2 h-2 bg-orange-500 rounded-full" />
+                <span>VT</span>
+              </div>
+              <div className="flex items-center gap-1">
+                <div className="w-2 h-2 bg-blue-500 rounded-full" />
+                <span>Properties</span>
+              </div>
+              <div className="flex items-center gap-1">
+                <div className="w-2 h-2 bg-green-500 rounded-full" />
+                <span>Transit</span>
+              </div>
+              <div className="flex items-center gap-1">
+                <div className="w-2 h-2 bg-purple-500 rounded-full" />
+                <span>Employers</span>
+              </div>
+            </div>
+          </div>
         </div>
+      </div>
+
+{/* Safety Controls */}
+<div className="absolute bottom-4 left-4 z-[120] pointer-events-auto">
+  <SafetyControls
+    enabled={safetyOn}
+    onToggle={setSafetyOn}
+    preset={preset}
+    onPresetChange={setPreset}
+    mode={safetyMode === 'heat' ? 'heat' : 'clusters'}
+    onModeChange={(m) => setSafetyMode(m === 'heat' ? 'heat' : 'points')}
+  />
+</div>
+
+
+      {/* Badges (counts) */}
+      <div className="absolute top-2 right-2 z-[120] space-y-1">
+        <div className="bg-white rounded-lg shadow-lg border border-gray-200 px-2 py-1">
+          <div className="flex items-center gap-1">
+            <div className="w-2 h-2 bg-blue-500 rounded-full" />
+            <span className="text-xs font-medium text-gray-800">
+              {(mapProperties.length > 0 ? mapProperties : properties || []).filter(
+                (p) => p.latitude && p.longitude
+              ).length}{' '}
+              Properties
+            </span>
+          </div>
+        </div>
+        {incidentCount !== null && safetyOn && (
+          <div className="bg-white rounded-lg shadow-lg border border-gray-200 px-2 py-1 text-xs">
+            {incidentCount} incidents in view
+          </div>
+        )}
       </div>
     </div>
   );
-}
+};
