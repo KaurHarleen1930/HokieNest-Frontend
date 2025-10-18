@@ -21,23 +21,29 @@
     <meta name="twitter:description" content="Find your perfect student housing near Virginia Tech campus." />
     
     <!-- Security Headers (dev-friendly CSP) -->
-    <meta http-equiv="Content-Security-Policy" content="
-      default-src 'self';
-      script-src 'self' 'unsafe-inline' 'unsafe-eval';
-      style-src 'self' 'unsafe-inline' https://fonts.googleapis.com;
-      font-src 'self' https://fonts.gstatic.com data:;
-      img-src 'self' data: blob: https://*.supabase.co https://images.unsplash.com;
-      connect-src
-        'self'
-        http://localhost:4000
-        ws://localhost:5173
-        https://*.supabase.co
-        wss://*.supabase.co;
-      base-uri 'self';
-      form-action 'self';
-      frame-ancestors 'self';
-    " />
-  </head>
+<meta http-equiv="Content-Security-Policy" content="
+  default-src 'self';
+  script-src 'self' 'unsafe-inline' 'unsafe-eval';
+  style-src 'self' 'unsafe-inline' https://fonts.googleapis.com;
+  font-src 'self' https://fonts.gstatic.com data:;
+  img-src 'self' data: blob:
+    https://tile.openstreetmap.org
+    https://*.tile.openstreetmap.org
+    https://*.openstreetmap.org
+    https://unpkg.com
+    https://*.supabase.co
+    https://images.unsplash.com;
+  connect-src
+    'self'
+    http://localhost:4000
+    ws://localhost:5173
+    https://*.supabase.co
+    wss://*.supabase.co;
+  base-uri 'self';
+  form-action 'self';
+  frame-ancestors 'self';
+">
+
 
   <body>
     <div id="root"></div>

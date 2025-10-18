@@ -422,7 +422,7 @@ export function PropertyMap({
 
   return (
     <div className={`relative ${className}`}>
-      <div ref={mapRef} className="w-full h-full rounded-lg" />
+      <div ref={mapRef} className="w-full h-[560px] md:h-[640px] rounded-lg" />
 
       {/* Map status / errors */}
       {mapError && (
