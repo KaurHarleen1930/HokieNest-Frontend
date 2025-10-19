@@ -298,6 +298,86 @@ export const usersAPI = {
 
 
 
+// Roommate Matching API
+export const roommatesAPI = {
+  // Find roommate matches for current user
+  findMatches: async (limit: number = 20): Promise<{
+    matches: any[];
+    total: number;
+    weights: any;
+  }> => {
+    const params = new URLSearchParams();
+    if (limit !== 20) params.append('limit', limit.toString());
+    
+    const queryString = params.toString();
+    const endpoint = `/roommates/matches${queryString ? `?${queryString}` : ''}`;
+    
+    return apiRequest(endpoint);
+  },
+
+  // Get matching weights
+  getWeights: async (): Promise<{
+    weights: any;
+    total: number;
+  }> => {
+    return apiRequest('/roommates/weights');
+  },
+
+  // Update matching weights (admin only)
+  updateWeights: async (weights: Partial<{
+    budget: number;
+    sleepSchedule: number;
+    cleanliness: number;
+    socialVibe: number;
+    moveInDate: number;
+    leaseLength: number;
+    distance: number;
+    quietHours: number;
+    chores: number;
+    guests: number;
+    workFromHome: number;
+    pets: number;
+    smoking: number;
+  }>): Promise<{
+    message: string;
+    weights: any;
+    total: number;
+  }> => {
+    return apiRequest('/roommates/weights', {
+      method: 'PUT',
+      body: JSON.stringify(weights),
+    });
+  },
+
+  // Reset weights to default (admin only)
+  resetWeights: async (): Promise<{
+    message: string;
+    weights: any;
+  }> => {
+    return apiRequest('/roommates/weights/reset', {
+      method: 'POST',
+    });
+  },
+
+  // Get specific roommate profile
+  getProfile: async (userId: string): Promise<{
+    profile: any;
+  }> => {
+    return apiRequest(`/roommates/profile/${userId}`);
+  },
+
+  // Get matching statistics (admin only)
+  getStats: async (): Promise<{
+    totalUsers: number;
+    usersWithHousing: number;
+    usersWithLifestyle: number;
+    completeProfiles: number;
+    weights: any;
+  }> => {
+    return apiRequest('/roommates/stats');
+  },
+};
+
 // Roommate Preferences API
 export const preferencesAPI = {
   // Get user preferences (housing + lifestyle)

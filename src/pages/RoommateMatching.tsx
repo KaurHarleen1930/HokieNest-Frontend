@@ -3,9 +3,11 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { EmptyState } from "@/components/ui/empty-state";
-import { Heart, Star, Users, DollarSign, Clock, Home, Target } from "lucide-react";
+import { Heart, Star, Users, DollarSign, Clock, Home, Target, AlertCircle } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "@/lib/auth";
+import { roommatesAPI } from "@/lib/api";
+import { useToast } from "@/hooks/use-toast";
 
 interface RoommateProfile {
   id: string;
@@ -20,14 +22,28 @@ interface RoommateProfile {
     sleepSchedule: string;
     socialVibe: string;
     cleanlinessLevel: number;
+    moveInDate: string;
+    leaseLength: string[];
+    maxDistance: string;
+    quietHoursStart: string;
+    quietHoursEnd: string;
+    choresPreference: string;
+    guestsFrequency: string;
+    workFromHomeDays: number;
+    hasPets: string[];
+    comfortableWithPets: boolean;
+    petAllergies: string[];
+    smokingPolicy: string[];
   };
 }
 
 export default function RoommateMatching() {
   const navigate = useNavigate();
   const { isAuthenticated } = useAuth();
+  const { toast } = useToast();
   const [roommates, setRoommates] = useState<RoommateProfile[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     console.log("RoommateMatching: useEffect running, isAuthenticated:", isAuthenticated);
@@ -37,61 +53,39 @@ export default function RoommateMatching() {
       return;
     }
     
-    // Simulate loading
-    setTimeout(() => {
-      const mockRoommates: RoommateProfile[] = [
-        {
-          id: "1",
-          name: "Alex Chen",
-          email: "alex.chen@vt.edu",
-          age: 22,
-          gender: "Male",
-          major: "Computer Science",
-          compatibilityScore: 92,
-          preferences: {
-            budgetRange: [800, 1200],
-            sleepSchedule: "Early bird",
-            socialVibe: "Balanced",
-            cleanlinessLevel: 4,
-          }
-        },
-        {
-          id: "2",
-          name: "Sarah Johnson",
-          email: "sarah.j@vt.edu",
-          age: 21,
-          gender: "Female",
-          major: "Engineering",
-          compatibilityScore: 87,
-          preferences: {
-            budgetRange: [700, 1100],
-            sleepSchedule: "Flexible",
-            socialVibe: "Quiet",
-            cleanlinessLevel: 3,
-          }
-        },
-        {
-          id: "3",
-          name: "Mike Rodriguez",
-          email: "mike.r@vt.edu",
-          age: 23,
-          gender: "Male",
-          major: "Business",
-          compatibilityScore: 78,
-          preferences: {
-            budgetRange: [900, 1300],
-            sleepSchedule: "Night owl",
-            socialVibe: "Lively",
-            cleanlinessLevel: 2,
-          }
+    const fetchRoommates = async () => {
+      try {
+        setLoading(true);
+        setError(null);
+        
+        console.log("RoommateMatching: Fetching roommate matches...");
+        const response = await roommatesAPI.findMatches(20);
+        
+        console.log("RoommateMatching: Received matches", response);
+        setRoommates(response.matches);
+        
+        if (response.matches.length === 0) {
+          toast({
+            title: "No matches found",
+            description: "Complete your roommate questionnaire to find compatible roommates.",
+          });
         }
-      ];
+      } catch (error: any) {
+        console.error("RoommateMatching: Error fetching matches", error);
+        setError(error.message || "Failed to fetch roommate matches");
+        
+        toast({
+          title: "Error",
+          description: error.message || "Failed to fetch roommate matches. Please try again.",
+          variant: "destructive",
+        });
+      } finally {
+        setLoading(false);
+      }
+    };
 
-      console.log("RoommateMatching: Setting roommates", mockRoommates);
-      setRoommates(mockRoommates);
-      setLoading(false);
-    }, 1000);
-  }, [isAuthenticated]);
+    fetchRoommates();
+  }, [isAuthenticated, toast]);
 
   const getCompatibilityColor = (score: number) => {
     if (score >= 90) return "text-green-600 bg-green-50";
@@ -107,20 +101,35 @@ export default function RoommateMatching() {
     return "Fair Match";
   };
 
-  console.log("RoommateMatching: Render", { loading, roommatesCount: roommates.length, isAuthenticated });
+  console.log("RoommateMatching: Render", { loading, roommatesCount: roommates.length, isAuthenticated, error });
 
   if (!isAuthenticated) {
     return (
       <div className="container mx-auto px-4 py-8">
         <EmptyState
-          icon={Users}
+          icon={<Users className="h-12 w-12" />}
           title="Authentication Required"
           description="Please log in to find compatible roommates"
-          action={
-            <Button onClick={() => navigate('/login')}>
-              Log In
-            </Button>
-          }
+          action={{
+            label: "Log In",
+            onClick: () => navigate('/login')
+          }}
+        />
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="container mx-auto px-4 py-8">
+        <EmptyState
+          icon={<AlertCircle className="h-12 w-12" />}
+          title="Error Loading Matches"
+          description={error}
+          action={{
+            label: "Try Again",
+            onClick: () => window.location.reload()
+          }}
         />
       </div>
     );
@@ -147,14 +156,13 @@ export default function RoommateMatching() {
     return (
       <div className="container mx-auto px-4 py-8">
         <EmptyState
-          icon={Users}
+          icon={<Users className="h-12 w-12" />}
           title="No Roommates Found"
           description="Complete your roommate questionnaire to find compatible roommates"
-          action={
-            <Button onClick={() => navigate('/roommate-questionnaire')}>
-              Complete Questionnaire
-            </Button>
-          }
+          action={{
+            label: "Complete Questionnaire",
+            onClick: () => navigate('/roommate-questionnaire')
+          }}
         />
       </div>
     );
@@ -231,6 +239,18 @@ export default function RoommateMatching() {
                   <Home className="h-4 w-4 text-muted-foreground" />
                   <span>{roommate.preferences.socialVibe}</span>
                 </div>
+                {roommate.preferences.moveInDate && (
+                  <div className="flex items-center gap-2 text-sm">
+                    <Clock className="h-4 w-4 text-muted-foreground" />
+                    <span>Move-in: {new Date(roommate.preferences.moveInDate).toLocaleDateString()}</span>
+                  </div>
+                )}
+                {roommate.preferences.workFromHomeDays > 0 && (
+                  <div className="flex items-center gap-2 text-sm">
+                    <Home className="h-4 w-4 text-muted-foreground" />
+                    <span>WFH: {roommate.preferences.workFromHomeDays} days/week</span>
+                  </div>
+                )}
               </div>
 
               {/* Action Buttons */}
@@ -238,9 +258,6 @@ export default function RoommateMatching() {
                 <Button className="flex-1 gap-2">
                   <Heart className="h-4 w-4" />
                   Connect
-                </Button>
-                <Button variant="outline" className="flex-1">
-                  View Profile
                 </Button>
               </div>
             </CardContent>
