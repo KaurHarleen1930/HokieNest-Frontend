@@ -1,0 +1,633 @@
+import { Router, Request, Response, NextFunction } from 'express';
+import { z } from 'zod';
+import { supabase } from '../lib/supabase';
+import { authenticateToken, AuthRequest } from '../middleware/auth';
+
+const router = Router();
+
+// 🏠 HOUSING PRIORITIES TABLE CONFIGURATION
+// Based on your actual Supabase table schema:
+// id, user_id, preferences (JSON), created_at, updated_at
+const HOUSING_PRIORITIES_COLUMNS = {
+  id: 'id',                     // Primary key
+  user_id: 'user_id',           // Foreign key to users table
+  preferences: 'preferences',   // JSON column containing priority values
+  created_at: 'created_at',     // Timestamp
+  updated_at: 'updated_at'      // Timestamp
+};
+
+// Helper function to build column selection for queries
+const getHousingPrioritiesColumns = () => {
+  return `${HOUSING_PRIORITIES_COLUMNS.id},${HOUSING_PRIORITIES_COLUMNS.user_id},${HOUSING_PRIORITIES_COLUMNS.preferences},${HOUSING_PRIORITIES_COLUMNS.created_at},${HOUSING_PRIORITIES_COLUMNS.updated_at}`.split(',');
+};
+
+// Helper function to generate consistent UUID from numeric user ID
+// This solves the issue where housing_priorities.user_id is UUID type but users.user_id is numeric
+const generateUserUuid = (numericUserId: string | number): string => {
+  const crypto = require('crypto');
+  const userId = Number(numericUserId);
+  const seed = `user_${userId}`;
+  const hash = crypto.createHash('sha256').update(seed).digest('hex');
+  
+  // Create a simple UUID-like string that's consistent for each numeric ID
+  return hash.substring(0, 8) + '-' + 
+         hash.substring(8, 12) + '-' + 
+         hash.substring(12, 16) + '-' + 
+         hash.substring(16, 20) + '-' + 
+         hash.substring(20, 32);
+};
+
+// Validation schemas
+const userProfileSchema = z.object({
+  gender: z.enum(['male', 'female', 'nonbinary', 'other']),
+  age: z.number().int().min(1).max(120),
+  major: z.string().min(1, 'Major is required'),
+});
+
+const housingPreferencesSchema = z.object({
+  budget_min: z.number().int().min(0),
+  budget_max: z.number().int().min(0),
+  move_in_date: z.string().min(1, 'Move-in date is required'),
+  move_out_date: z.string().optional().or(z.literal('')).or(z.null()),
+  lease_length: z.array(z.string()).optional().default([]),
+  max_distance: z.string().optional().default(''),
+  quiet_hours_start: z.string().optional().default('22:00'),
+  quiet_hours_end: z.string().optional().default('07:00'),
+});
+
+const lifestylePreferencesSchema = z.object({
+  cleanliness_level: z.number().int().min(1).max(5),
+  noise_tolerance: z.enum(['quiet', 'moderate', 'loud']),
+  sleep_schedule: z.enum(['early', 'late', 'flexible']),
+  cooking_habits: z.enum(['often', 'sometimes', 'rarely']),
+  diet: z.enum(['vegan', 'vegetarian', 'none']),
+  pets: z.enum(['has_pets', 'no_pets', 'allergic']),
+  sharing_items: z.enum(['yes', 'sometimes', 'no']),
+  chores_preference: z.string().optional().default(''),
+  guests_frequency: z.string().optional().default(''),
+  work_from_home_days: z.number().int().min(0).max(7).optional().default(3),
+  comfortable_with_pets: z.boolean().optional().default(false),
+  pet_allergies: z.array(z.string()).optional().default([]),
+  smoking_policy: z.array(z.string()).optional().default([]),
+});
+
+const housingPrioritiesSchema = z.object({
+  budget: z.number().int().min(0).max(100),
+  commute: z.number().int().min(0).max(100),
+  safety: z.number().int().min(0).max(100),
+  roommates: z.number().int().min(0).max(100),
+}).refine((data) => {
+  const total = data.budget + data.commute + data.safety + data.roommates;
+  return total === 100;
+}, {
+  message: "Priority percentages must total exactly 100%",
+  path: ["budget"]
+});
+
+// Update user profile (gender, age, major)
+router.put('/profile', authenticateToken as any, async (req: any, res: Response, next: NextFunction) => {
+  try {
+    const userId = req.user?.id;
+    if (!userId) {
+      return res.status(401).json({ message: 'Unauthorized' });
+    }
+
+    const validatedData = userProfileSchema.parse(req.body);
+
+    const { error } = await supabase
+      .from('users')
+      .update({
+        gender: validatedData.gender,
+        age: validatedData.age,
+        major: validatedData.major,
+      })
+      .eq('user_id', userId);
+
+    if (error) {
+      console.error('Error updating user profile:', error);
+      return res.status(500).json({ message: 'Failed to update profile' });
+    }
+
+    res.json({ message: 'Profile updated successfully' });
+  } catch (error) {
+    if (error instanceof z.ZodError) {
+      return res.status(400).json({
+        message: 'Validation error',
+        errors: error.errors,
+      });
+    }
+    next(error);
+  }
+});
+
+// Upsert housing preferences
+router.post('/housing', authenticateToken as any, async (req: any, res: Response, next: NextFunction) => {
+  try {
+    const userId = req.user?.id;
+    if (!userId) {
+      return res.status(401).json({ message: 'Unauthorized' });
+    }
+
+    console.log('Housing preferences request body:', req.body);
+    const validatedData = housingPreferencesSchema.parse(req.body);
+    console.log('Validated housing data:', validatedData);
+
+    // Check if housing preferences already exist
+    const { data: existing, error: checkError } = await supabase
+      .from('housing_preferences')
+      .select('user_id')
+      .eq('user_id', userId)
+      .maybeSingle();
+
+    if (checkError) {
+      console.error('Error checking existing housing preferences:', checkError);
+      return res.status(500).json({ message: 'Failed to check existing preferences' });
+    }
+
+    if (existing) {
+      // Update existing preferences
+      const { error } = await supabase
+        .from('housing_preferences')
+        .update({
+          budget_min: validatedData.budget_min,
+          budget_max: validatedData.budget_max,
+          move_in_date: validatedData.move_in_date,
+          move_out_date: validatedData.move_out_date || null,
+          lease_length: validatedData.lease_length,
+          max_distance: validatedData.max_distance,
+          quiet_hours_start: validatedData.quiet_hours_start,
+          quiet_hours_end: validatedData.quiet_hours_end,
+        })
+        .eq('user_id', userId);
+
+      if (error) {
+        console.error('Error updating housing preferences:', error);
+        return res.status(500).json({ message: 'Failed to update housing preferences' });
+      }
+    } else {
+      // Create new preferences
+      const { error } = await supabase
+        .from('housing_preferences')
+        .insert({
+          user_id: userId,
+          budget_min: validatedData.budget_min,
+          budget_max: validatedData.budget_max,
+          move_in_date: validatedData.move_in_date,
+          move_out_date: validatedData.move_out_date || null,
+          lease_length: validatedData.lease_length,
+          max_distance: validatedData.max_distance,
+          quiet_hours_start: validatedData.quiet_hours_start,
+          quiet_hours_end: validatedData.quiet_hours_end,
+        });
+
+      if (error) {
+        console.error('Error creating housing preferences:', error);
+        return res.status(500).json({ message: 'Failed to create housing preferences' });
+      }
+    }
+
+    res.json({ message: 'Housing preferences saved successfully' });
+  } catch (error) {
+    if (error instanceof z.ZodError) {
+      console.error('Housing preferences validation error:', error.errors);
+      return res.status(400).json({
+        message: 'Validation error',
+        errors: error.errors,
+      });
+    }
+    console.error('Housing preferences error:', error);
+    next(error);
+  }
+});
+
+// Upsert lifestyle preferences
+router.post('/lifestyle', authenticateToken as any, async (req: any, res: Response, next: NextFunction) => {
+  try {
+    const userId = req.user?.id;
+    if (!userId) {
+      return res.status(401).json({ message: 'Unauthorized' });
+    }
+
+    const validatedData = lifestylePreferencesSchema.parse(req.body);
+
+    // Check if lifestyle preferences already exist
+    const { data: existing, error: checkError } = await supabase
+      .from('lifestyle_preferences')
+      .select('user_id')
+      .eq('user_id', userId)
+      .maybeSingle();
+
+    if (checkError) {
+      console.error('Error checking existing lifestyle preferences:', checkError);
+      return res.status(500).json({ message: 'Failed to check existing preferences' });
+    }
+
+    if (existing) {
+      // Update existing preferences
+      const { error } = await supabase
+        .from('lifestyle_preferences')
+        .update({
+          cleanliness_level: validatedData.cleanliness_level,
+          noise_tolerance: validatedData.noise_tolerance,
+          sleep_schedule: validatedData.sleep_schedule,
+          cooking_habits: validatedData.cooking_habits,
+          diet: validatedData.diet,
+          pets: validatedData.pets,
+          sharing_items: validatedData.sharing_items,
+          chores_preference: validatedData.chores_preference,
+          guests_frequency: validatedData.guests_frequency,
+          work_from_home_days: validatedData.work_from_home_days,
+          comfortable_with_pets: validatedData.comfortable_with_pets,
+          pet_allergies: validatedData.pet_allergies,
+          smoking_policy: validatedData.smoking_policy,
+        })
+        .eq('user_id', userId);
+
+      if (error) {
+        console.error('Error updating lifestyle preferences:', error);
+        return res.status(500).json({ message: 'Failed to update lifestyle preferences' });
+      }
+    } else {
+      // Create new preferences
+      const { error } = await supabase
+        .from('lifestyle_preferences')
+        .insert({
+          user_id: userId,
+          cleanliness_level: validatedData.cleanliness_level,
+          noise_tolerance: validatedData.noise_tolerance,
+          sleep_schedule: validatedData.sleep_schedule,
+          cooking_habits: validatedData.cooking_habits,
+          diet: validatedData.diet,
+          pets: validatedData.pets,
+          sharing_items: validatedData.sharing_items,
+          chores_preference: validatedData.chores_preference,
+          guests_frequency: validatedData.guests_frequency,
+          work_from_home_days: validatedData.work_from_home_days,
+          comfortable_with_pets: validatedData.comfortable_with_pets,
+          pet_allergies: validatedData.pet_allergies,
+          smoking_policy: validatedData.smoking_policy,
+        });
+
+      if (error) {
+        console.error('Error creating lifestyle preferences:', error);
+        return res.status(500).json({ message: 'Failed to create lifestyle preferences' });
+      }
+    }
+
+    res.json({ message: 'Lifestyle preferences saved successfully' });
+  } catch (error) {
+    if (error instanceof z.ZodError) {
+      return res.status(400).json({
+        message: 'Validation error',
+        errors: error.errors,
+      });
+    }
+    next(error);
+  }
+});
+
+// Get user preferences (for editing)
+router.get('/profile', authenticateToken as any, async (req: any, res: Response, next: NextFunction) => {
+  try {
+    const userId = req.user?.id;
+    if (!userId) {
+      return res.status(401).json({ message: 'Unauthorized' });
+    }
+
+    // Get user profile
+    const { data: user, error: userError } = await supabase
+      .from('users')
+      .select('user_id, gender, age, major')
+      .eq('user_id', Number(userId))
+      .single();
+
+    if (userError) {
+      console.error('Error fetching user profile:', userError);
+      return res.status(500).json({ message: 'Failed to fetch profile' });
+    }
+
+    // Get housing preferences
+    const { data: housing, error: housingError } = await supabase
+      .from('housing_preferences')
+      .select('*')
+      .eq('user_id', userId)
+      .single();
+
+    if (housingError && housingError.code !== 'PGRST116') {
+      console.error('Error fetching housing preferences:', housingError);
+      return res.status(500).json({ message: 'Failed to fetch housing preferences' });
+    }
+
+    // Get lifestyle preferences
+    const { data: lifestyle, error: lifestyleError } = await supabase
+      .from('lifestyle_preferences')
+      .select('*')
+      .eq('user_id', userId)
+      .single();
+
+    if (lifestyleError && lifestyleError.code !== 'PGRST116') {
+      console.error('Error fetching lifestyle preferences:', lifestyleError);
+      return res.status(500).json({ message: 'Failed to fetch lifestyle preferences' });
+    }
+
+    // Generate consistent UUID for housing priorities
+    const userIdForPriorities = generateUserUuid(userId);
+    const { data: priorities, error: prioritiesError } = await supabase
+      .from('housing_priorities')
+      .select('*')
+      .eq(HOUSING_PRIORITIES_COLUMNS.user_id, userIdForPriorities)
+      .single();
+
+    if (prioritiesError && prioritiesError.code !== 'PGRST116') {
+      console.error('Error fetching housing priorities:', prioritiesError);
+      return res.status(500).json({ message: 'Failed to fetch housing priorities' });
+    }
+
+    // Extract preferences from JSON column
+    let prioritiesData = null;
+    if (priorities && priorities.preferences) {
+      prioritiesData = {
+        budget: priorities.preferences.budget || 25,
+        commute: priorities.preferences.commute || 25,
+        safety: priorities.preferences.safety || 25,
+        roommates: priorities.preferences.roommates || 25,
+      };
+    }
+
+    res.json({
+      profile: user,
+      housing: housing || null,
+      lifestyle: lifestyle || null,
+      priorities: prioritiesData,
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+// Delete all user preferences
+router.delete('/delete', authenticateToken as any, async (req: any, res: Response, next: NextFunction) => {
+  try {
+    const userId = req.user?.id;
+    if (!userId) {
+      return res.status(401).json({ message: 'Unauthorized' });
+    }
+
+    // Delete housing preferences
+    const { error: housingError } = await supabase
+      .from('housing_preferences')
+      .delete()
+      .eq('user_id', userId);
+
+    if (housingError) {
+      console.error('Error deleting housing preferences:', housingError);
+    }
+
+    // Delete lifestyle preferences
+    const { error: lifestyleError } = await supabase
+      .from('lifestyle_preferences')
+      .delete()
+      .eq('user_id', userId);
+
+    if (lifestyleError) {
+      console.error('Error deleting lifestyle preferences:', lifestyleError);
+    }
+
+    // Delete housing priorities
+    const { error: prioritiesError } = await supabase
+      .from('housing_priorities')
+      .delete()
+      .eq('user_id', userId);
+
+    if (prioritiesError) {
+      console.error('Error deleting housing priorities:', prioritiesError);
+    }
+
+    res.json({ message: 'All preferences deleted successfully' });
+  } catch (error) {
+    console.error('Delete preferences error:', error);
+    next(error);
+  }
+});
+
+// Save housing priorities
+router.post('/housing-priorities', authenticateToken as any, async (req: any, res: Response, next: NextFunction) => {
+  try {
+    const userId = req.user?.id;
+    if (!userId) {
+      return res.status(401).json({ message: 'Unauthorized' });
+    }
+
+    const validatedData = housingPrioritiesSchema.parse(req.body);
+
+    console.log('🔍 User ID from auth:', userId, typeof userId);
+    
+    // STEP 1: Check what UUID fields exist in the users table
+    // Supabase might have auto-generated an 'id' field that's UUID
+    const { data: userRecord, error: userError } = await supabase
+      .from('users')
+      .select('*') // Get all fields to see what UUID fields exist
+      .eq('user_id', Number(userId))
+      .single();
+    
+    if (userError) {
+      console.error('Error fetching user record:', userError);
+      return res.status(500).json({ message: 'Failed to fetch user information' });
+    }
+    
+    console.log('🔍 Full user record:', userRecord);
+    
+    // STEP 2: Determine the correct UUID to use for housing_priorities.user_id
+    let userIdForQuery: string;
+    
+    if (userRecord.id && typeof userRecord.id === 'string') {
+      // Use the actual UUID field from users table
+      userIdForQuery = userRecord.id;
+      console.log('🔍 Using actual UUID from users.id field:', userIdForQuery);
+    } else {
+      // Fallback to generated UUID (but this will fail foreign key constraint)
+      userIdForQuery = generateUserUuid(userId);
+      console.log('🔍 No UUID field found, using generated UUID:', userIdForQuery);
+      console.log('⚠️  WARNING: This will likely fail due to foreign key constraint');
+    }
+
+    // Check if housing priorities already exist
+    const { data: existing, error: checkError } = await supabase
+      .from('housing_priorities')
+      .select('*')
+      .eq(HOUSING_PRIORITIES_COLUMNS.user_id, userIdForQuery)
+      .maybeSingle();
+
+    if (checkError) {
+      console.error('Error checking existing housing priorities:', checkError);
+      // Continue anyway, we'll handle it in the insert/update
+    }
+
+    console.log('🔍 Attempting to query with UUID:', userIdForQuery);
+
+    // Prepare preferences data for JSON storage
+    const preferencesData = {
+      budget: validatedData.budget,
+      commute: validatedData.commute,
+      safety: validatedData.safety,
+      roommates: validatedData.roommates,
+    };
+
+    if (existing) {
+      // Update existing priorities
+      const { error } = await supabase
+        .from('housing_priorities')
+        .update({
+          preferences: preferencesData
+        })
+        .eq(HOUSING_PRIORITIES_COLUMNS.user_id, userIdForQuery);
+
+      if (error) {
+        console.error('Error updating housing priorities:', error);
+        return res.status(500).json({ message: 'Failed to update housing priorities' });
+      }
+    } else {
+      // Create new priorities
+      const { error } = await supabase
+        .from('housing_priorities')
+        .insert({
+          user_id: userIdForQuery,
+          preferences: preferencesData
+        });
+
+      if (error) {
+        console.error('Error creating housing priorities:', error);
+        if (error.code === '23503') {
+          return res.status(500).json({ 
+            message: 'Foreign key constraint error: The user ID does not exist as a valid UUID in the users table. This indicates a database schema issue where housing_priorities.user_id expects a UUID but your users table has numeric IDs.',
+            details: error.details
+          });
+        }
+        return res.status(500).json({ message: 'Failed to create housing priorities' });
+      }
+    }
+
+    res.json({ message: 'Housing priorities saved successfully' });
+  } catch (error) {
+    if (error instanceof z.ZodError) {
+      return res.status(400).json({
+        message: 'Validation error',
+        errors: error.errors,
+      });
+    }
+    console.error('Housing priorities error:', error);
+    next(error);
+  }
+});
+
+// Get housing priorities
+router.get('/housing-priorities', authenticateToken as any, async (req: any, res: Response, next: NextFunction) => {
+  console.log('🏠 GET /housing-priorities - Route accessed');
+  try {
+    const userId = req.user?.id;
+    if (!userId) {
+      return res.status(401).json({ message: 'Unauthorized' });
+    }
+
+    // Generate consistent UUID for the numeric user ID
+    const userIdForQuery = generateUserUuid(userId);
+    console.log('🔍 Querying housing_priorities with UUID:', userIdForQuery, 'for user_id:', userId);
+    
+    const { data: priorities, error } = await supabase
+      .from('housing_priorities')
+      .select('*')
+      .eq(HOUSING_PRIORITIES_COLUMNS.user_id, userIdForQuery)
+      .single();
+
+    console.log('📊 Query result:', { data: priorities, error });
+
+    if (error) {
+      if (error.code === 'PGRST116') {
+        // No priorities found - return default values
+        return res.json({ 
+          budget: 25,
+          commute: 25,
+          safety: 25,
+          roommates: 25
+        });
+      }
+      console.error('Error fetching housing priorities:', error);
+      return res.status(500).json({ message: 'Failed to fetch housing priorities' });
+    }
+
+    // Extract preferences from the JSON column
+    const preferencesData = priorities.preferences || {};
+    
+    // Return the preferences with defaults for missing values
+    res.json({
+      budget: preferencesData.budget || 25,
+      commute: preferencesData.commute || 25,
+      safety: preferencesData.safety || 25,
+      roommates: preferencesData.roommates || 25,
+    });
+  } catch (error) {
+    console.error('Get housing priorities error:', error);
+    next(error);
+  }
+});
+
+// Delete housing priorities
+router.delete('/housing-priorities', authenticateToken as any, async (req: any, res: Response, next: NextFunction) => {
+  try {
+    const userId = req.user?.id;
+    if (!userId) {
+      return res.status(401).json({ message: 'Unauthorized' });
+    }
+
+    // Generate consistent UUID for the numeric user ID
+    const userIdForQuery = generateUserUuid(userId);
+
+    const { error } = await supabase
+      .from('housing_priorities')
+      .delete()
+      .eq(HOUSING_PRIORITIES_COLUMNS.user_id, userIdForQuery);
+
+    if (error) {
+      console.error('Error deleting housing priorities:', error);
+      return res.status(500).json({ message: 'Failed to delete housing priorities' });
+    }
+
+    res.json({ message: 'Housing priorities deleted successfully' });
+  } catch (error) {
+    console.error('Delete housing priorities error:', error);
+    next(error);
+  }
+});
+
+// Test endpoint to check Supabase connection and table structure
+router.get('/test-housing-priorities', authenticateToken as any, async (req: any, res: Response, next: NextFunction) => {
+  try {
+    console.log('🧪 Testing Supabase connection and housing_priorities table...');
+    
+    // Test basic connection
+    const { data, error } = await supabase
+      .from('housing_priorities')
+      .select('*')
+      .limit(1);
+    
+    console.log('🧪 Test query result:', { data, error });
+    
+    res.json({
+      message: 'Supabase test completed',
+      connectionWorking: !error,
+      error: error?.message || null,
+      sampleData: data?.[0] || null,
+      tableExists: !error || error.code !== '42P01' // 42P01 = relation does not exist
+    });
+  } catch (error) {
+    console.error('🧪 Test error:', error);
+    res.status(500).json({ 
+      message: 'Test failed', 
+      error: error instanceof Error ? error.message : 'Unknown error' 
+    });
+  }
+});
+
+console.log('🏠 Housing priorities routes registered: GET /housing-priorities, POST /housing-priorities, DELETE /housing-priorities, GET /test-housing-priorities');
+
+export { router as preferencesRoutes };
