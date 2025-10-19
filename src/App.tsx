@@ -22,6 +22,7 @@ import ListingsDebug from "./pages/ListingsDebug";
 import RoommateQuestionnaire from "./pages/RoommateQuestionnaire";
 import RoommateProfile from "./pages/RoommateProfile";
 import RoommateMatching from "./pages/RoommateMatching";
+import PriorityRankingPage from "./pages/PriorityRankingPage";
 import 'leaflet/dist/leaflet.css';
 
 const queryClient = new QueryClient();
@@ -51,6 +52,11 @@ const App = () => (
               <Route path="/roommate-matching" element={
                 <ProtectedRoute>
                   <RoommateMatching />
+                </ProtectedRoute>
+              } />
+              <Route path="/priority-ranking" element={
+                <ProtectedRoute>
+                  <PriorityRankingPage />
                 </ProtectedRoute>
               } />
               <Route path="/properties" element={<Properties />} />

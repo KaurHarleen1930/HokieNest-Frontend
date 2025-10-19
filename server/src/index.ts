@@ -8,6 +8,7 @@ import { listingRoutes } from './routes/listings';
 import { adminRoutes } from './routes/admin';
 import { preferencesRoutes } from './routes/preferences';
 import { roommatesRoutes } from './routes/roommates';
+import { priorityWeightsRoutes } from './routes/priority-weights';
 import { errorHandler } from './middleware/errorHandler';
 
 dotenv.config({ path: './.env' });
@@ -46,6 +47,7 @@ app.use('/api/v1/listings', listingRoutes);
 app.use('/api/v1/admin', adminRoutes);
 app.use('/api/v1/preferences', preferencesRoutes);
 app.use('/api/v1/roommates', roommatesRoutes);
+app.use('/api/v1/priority-weights', priorityWeightsRoutes);
 
 // Error handling
 app.use(errorHandler);

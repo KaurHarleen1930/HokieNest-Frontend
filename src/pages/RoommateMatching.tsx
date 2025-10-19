@@ -3,7 +3,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { EmptyState } from "@/components/ui/empty-state";
-import { Heart, Star, Users, DollarSign, Clock, Home, Target, AlertCircle } from "lucide-react";
+import { Heart, Star, Users, DollarSign, Clock, Home, Target, AlertCircle, Settings } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "@/lib/auth";
 import { roommatesAPI } from "@/lib/api";
@@ -47,23 +47,23 @@ export default function RoommateMatching() {
 
   useEffect(() => {
     console.log("RoommateMatching: useEffect running, isAuthenticated:", isAuthenticated);
-    
+
     if (!isAuthenticated) {
       setLoading(false);
       return;
     }
-    
+
     const fetchRoommates = async () => {
       try {
         setLoading(true);
         setError(null);
-        
+
         console.log("RoommateMatching: Fetching roommate matches...");
-        const response = await roommatesAPI.findMatches(20);
-        
+        const response = await roommatesAPI.findMatches(50);
+
         console.log("RoommateMatching: Received matches", response);
         setRoommates(response.matches);
-        
+
         if (response.matches.length === 0) {
           toast({
             title: "No matches found",
@@ -73,7 +73,7 @@ export default function RoommateMatching() {
       } catch (error: any) {
         console.error("RoommateMatching: Error fetching matches", error);
         setError(error.message || "Failed to fetch roommate matches");
-        
+
         toast({
           title: "Error",
           description: error.message || "Failed to fetch roommate matches. Please try again.",
@@ -177,16 +177,31 @@ export default function RoommateMatching() {
             <h1 className="text-3xl font-bold text-foreground mb-2">Find Your Perfect Roommate</h1>
             <p className="text-muted">
               {roommates.length} potential roommate{roommates.length !== 1 ? 's' : ''} found
+              {roommates.length > 0 && (
+                <span className="text-xs text-muted-foreground ml-2">
+                  (showing all available matches)
+                </span>
+              )}
             </p>
           </div>
-          <Button
-            variant="outline"
-            onClick={() => navigate('/roommate-profile')}
-            className="gap-2"
-          >
-            <Target className="h-4 w-4" />
-            View My Profile
-          </Button>
+          <div className="flex gap-2">
+            <Button
+              variant="outline"
+              onClick={() => navigate('/priority-ranking')}
+              className="gap-2"
+            >
+              <Settings className="h-4 w-4" />
+              Set Priorities
+            </Button>
+            <Button
+              variant="outline"
+              onClick={() => navigate('/roommate-profile')}
+              className="gap-2"
+            >
+              <Target className="h-4 w-4" />
+              View My Profile
+            </Button>
+          </div>
         </div>
       </div>
 
@@ -218,7 +233,7 @@ export default function RoommateMatching() {
                   </span>
                 </div>
                 <div className="w-full bg-muted rounded-full h-2">
-                  <div 
+                  <div
                     className="bg-primary h-2 rounded-full transition-all duration-300"
                     style={{ width: `${roommate.compatibilityScore}%` }}
                   />

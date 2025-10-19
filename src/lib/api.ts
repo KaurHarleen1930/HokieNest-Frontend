@@ -483,3 +483,35 @@ export const preferencesAPI = {
     });
   },
 };
+
+// Priority Weights API
+export const priorityWeightsAPI = {
+  // Save user priority weights
+  saveWeights: async (weights: {
+    budget: number;
+    location: number;
+    lifestyle: number;
+    pets: number;
+    timing: number;
+    work: number;
+  }): Promise<{ message: string; weights: any }> => {
+    return apiRequest<{ message: string; weights: any }>('/priority-weights/save', {
+      method: 'POST',
+      body: JSON.stringify(weights),
+    });
+  },
+
+  // Get user priority weights
+  getWeights: async (): Promise<{ weights: any; isDefault: boolean; lastUpdated?: string }> => {
+    return apiRequest<{ weights: any; isDefault: boolean; lastUpdated?: string }>('/priority-weights/get', {
+      method: 'GET',
+    });
+  },
+
+  // Get priority-based matches
+  getMatches: async (limit: number = 20): Promise<{ matches: any[]; total: number; message: string }> => {
+    return apiRequest<{ matches: any[]; total: number; message: string }>(`/priority-weights/matches?limit=${limit}`, {
+      method: 'GET',
+    });
+  },
+};
