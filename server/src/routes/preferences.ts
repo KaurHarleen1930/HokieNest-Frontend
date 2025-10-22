@@ -298,10 +298,23 @@ router.get('/profile', authenticateToken as any, async (req: any, res: Response,
       return res.status(500).json({ message: 'Failed to fetch lifestyle preferences' });
     }
 
+    // Get housing priorities
+    const { data: priorities, error: prioritiesError } = await supabase
+      .from('housing_priorities')
+      .select('*')
+      .eq('user_id', userId)
+      .single();
+
+    if (prioritiesError && prioritiesError.code !== 'PGRST116') {
+      console.error('Error fetching housing priorities:', prioritiesError);
+      return res.status(500).json({ message: 'Failed to fetch housing priorities' });
+    }
+
     res.json({
       profile: user,
       housing: housing || null,
       lifestyle: lifestyle || null,
+      priorities: priorities ? priorities.preferences : null,
     });
   } catch (error) {
     next(error);
@@ -343,6 +356,47 @@ router.delete('/delete', authenticateToken as any, async (req: any, res: Respons
   }
 });
 
+// Get housing priorities
+router.get('/housing-priorities', authenticateToken as any, async (req: any, res: Response, next: NextFunction) => {
+  try {
+    const userId = req.user?.id;
+    if (!userId) {
+      return res.status(401).json({ message: 'Unauthorized' });
+    }
+
+    const { data: priorities, error } = await supabase
+      .from('housing_priorities')
+      .select('*')
+      .eq('user_id', userId)
+      .single();
+
+    if (error && error.code !== 'PGRST116') {
+      console.error('Error fetching housing priorities:', error);
+      return res.status(500).json({ message: 'Failed to fetch housing priorities' });
+    }
+
+    if (!priorities) {
+      // Return default priorities if none exist
+      const defaultPriorities = {
+        budget: 25,
+        commute: 25,
+        safety: 25,
+        roommates: 25
+      };
+      return res.json({ priorities: defaultPriorities, isDefault: true });
+    }
+
+    res.json({
+      priorities: priorities.preferences,
+      isDefault: false,
+      lastUpdated: priorities.updated_at
+    });
+  } catch (error) {
+    console.error('Error getting housing priorities:', error);
+    next(error);
+  }
+});
+
 // Save housing priorities
 router.post('/housing-priorities', authenticateToken as any, async (req: any, res: Response, next: NextFunction) => {
   try {
@@ -356,7 +410,7 @@ router.post('/housing-priorities', authenticateToken as any, async (req: any, re
     // Check if housing priorities already exist
     const { data: existing, error: checkError } = await supabase
       .from('housing_priorities')
-      .select('priority_id')
+      .select('id')
       .eq('user_id', userId)
       .maybeSingle();
 
@@ -370,10 +424,7 @@ router.post('/housing-priorities', authenticateToken as any, async (req: any, re
       const { error } = await supabase
         .from('housing_priorities')
         .update({
-          budget_priority: validatedData.budget,
-          commute_priority: validatedData.commute,
-          safety_priority: validatedData.safety,
-          roommates_priority: validatedData.roommates,
+          preferences: validatedData,
         })
         .eq('user_id', userId);
 
@@ -387,10 +438,7 @@ router.post('/housing-priorities', authenticateToken as any, async (req: any, re
         .from('housing_priorities')
         .insert({
           user_id: userId,
-          budget_priority: validatedData.budget,
-          commute_priority: validatedData.commute,
-          safety_priority: validatedData.safety,
-          roommates_priority: validatedData.roommates,
+          preferences: validatedData,
         });
 
       if (error) {

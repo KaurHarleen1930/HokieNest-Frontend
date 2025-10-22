@@ -181,11 +181,12 @@ router.get('/weighted-matches', authenticateToken as any, async (req: any, res: 
     }
 
     // Convert housing priorities to question weights format
+    const priorities = currentUserPriorities?.preferences || { budget: 25, commute: 25, safety: 25, roommates: 25 };
     const userWeights: QuestionWeight[] = [
-      { questionId: 'budget', weight: Math.round(currentUserPriorities?.budget_priority / 20) || 3 },
-      { questionId: 'sleepSchedule', weight: Math.round(currentUserPriorities?.roommates_priority / 20) || 3 },
-      { questionId: 'cleanliness', weight: Math.round(currentUserPriorities?.safety_priority / 20) || 3 },
-      { questionId: 'socialVibe', weight: Math.round(currentUserPriorities?.roommates_priority / 20) || 3 },
+      { questionId: 'budget', weight: Math.round(priorities.budget / 20) || 3 },
+      { questionId: 'sleepSchedule', weight: Math.round(priorities.roommates / 20) || 3 },
+      { questionId: 'cleanliness', weight: Math.round(priorities.safety / 20) || 3 },
+      { questionId: 'socialVibe', weight: Math.round(priorities.roommates / 20) || 3 },
       { questionId: 'pets', weight: 2 },
       { questionId: 'workFromHome', weight: 2 },
       { questionId: 'guests', weight: 2 },

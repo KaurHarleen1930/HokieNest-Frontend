@@ -34,7 +34,7 @@ export const authenticateToken = async (req: AuthRequest, res: Response, next: N
 
     // Format user for the application
     const formattedUser = {
-      id: user.user_id.toString(),
+      id: user.user_id, // Keep as original type (UUID or integer)
       email: user.email,
       name: `${user.first_name || ''} ${user.last_name || ''}`.trim() || 'User',
       role: user.is_admin ? 'admin' : 'student'

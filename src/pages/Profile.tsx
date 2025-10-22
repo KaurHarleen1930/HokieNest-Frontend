@@ -9,7 +9,10 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { User, Mail, Shield, Calendar, Edit, Save, X, Trash2, AlertTriangle } from "lucide-react";
+import { Slider } from "@/components/ui/slider";
+import { Progress } from "@/components/ui/progress";
+import { Separator } from "@/components/ui/separator";
+import { User, Mail, Shield, Calendar, Edit, Save, X, Trash2, AlertTriangle, Target, DollarSign, MapPin, Shield as ShieldIcon, Users, Settings, BarChart3 } from "lucide-react";
 import { toast } from "sonner";
 
 interface ProfileData {
@@ -18,12 +21,20 @@ interface ProfileData {
   major: string;
 }
 
+interface HousingPriorities {
+  budget: number;
+  commute: number;
+  safety: number;
+  roommates: number;
+}
+
 const Profile = () => {
   const { user, logout } = useAuth();
   const navigate = useNavigate();
   const [isEditing, setIsEditing] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
+  const [isEditingPriorities, setIsEditingPriorities] = useState(false);
   const [profileData, setProfileData] = useState<ProfileData>({
     gender: '',
     age: 0,
@@ -34,10 +45,23 @@ const Profile = () => {
     age: 0,
     major: ''
   });
+  const [housingPriorities, setHousingPriorities] = useState<HousingPriorities>({
+    budget: 25,
+    commute: 25,
+    safety: 25,
+    roommates: 25
+  });
+  const [editPriorities, setEditPriorities] = useState<HousingPriorities>({
+    budget: 25,
+    commute: 25,
+    safety: 25,
+    roommates: 25
+  });
 
   useEffect(() => {
     if (user) {
       fetchProfileData();
+      fetchHousingPriorities();
     }
   }, [user]);
 
@@ -58,6 +82,28 @@ const Profile = () => {
       }
     } catch (error) {
       console.error('Error fetching profile data:', error);
+    }
+  };
+
+  const fetchHousingPriorities = async () => {
+    try {
+      const token = localStorage.getItem('auth_token');
+      const response = await fetch('http://localhost:4000/api/v1/preferences/housing-priorities', {
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        }
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        if (data.priorities) {
+          setHousingPriorities(data.priorities);
+          setEditPriorities(data.priorities);
+        }
+      }
+    } catch (error) {
+      console.error('Error fetching housing priorities:', error);
     }
   };
 
@@ -97,6 +143,59 @@ const Profile = () => {
   const handleCancel = () => {
     setEditData(profileData);
     setIsEditing(false);
+  };
+
+  const handleEditPriorities = () => {
+    setEditPriorities(housingPriorities);
+    setIsEditingPriorities(true);
+  };
+
+  const handleSavePriorities = async () => {
+    try {
+      setIsLoading(true);
+      const token = localStorage.getItem('auth_token');
+      const response = await fetch('http://localhost:4000/api/v1/preferences/housing-priorities', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(editPriorities)
+      });
+
+      if (response.ok) {
+        setHousingPriorities(editPriorities);
+        setIsEditingPriorities(false);
+        toast.success('Housing priorities updated successfully!');
+      } else {
+        const error = await response.json();
+        toast.error(error.message || 'Failed to update housing priorities');
+      }
+    } catch (error) {
+      toast.error('Failed to update housing priorities');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleCancelPriorities = () => {
+    setEditPriorities(housingPriorities);
+    setIsEditingPriorities(false);
+  };
+
+  const handlePriorityChange = (key: keyof HousingPriorities, value: number[]) => {
+    setEditPriorities(prev => ({
+      ...prev,
+      [key]: value[0]
+    }));
+  };
+
+  const getTotalPriorities = () => {
+    return editPriorities.budget + editPriorities.commute + editPriorities.safety + editPriorities.roommates;
+  };
+
+  const isPrioritiesValid = () => {
+    return getTotalPriorities() === 100;
   };
 
   const handleDelete = async () => {
@@ -270,6 +369,193 @@ const Profile = () => {
                     )}
                   </div>
                 </div>
+              </div>
+
+              {/* Housing Priorities Section */}
+              <div className="pt-4 border-t">
+                <div className="flex items-center justify-between mb-4">
+                  <h3 className="text-lg font-semibold flex items-center gap-2">
+                    <Target className="h-5 w-5" />
+                    Housing Priorities
+                  </h3>
+                  {!isEditingPriorities ? (
+                    <Button onClick={handleEditPriorities} variant="outline" size="sm">
+                      <Settings className="h-4 w-4 mr-2" />
+                      Edit Priorities
+                    </Button>
+                  ) : (
+                    <div className="flex gap-2">
+                      <Button 
+                        onClick={handleSavePriorities} 
+                        disabled={isLoading || !isPrioritiesValid()} 
+                        size="sm"
+                      >
+                        <Save className="h-4 w-4 mr-2" />
+                        {isLoading ? 'Saving...' : 'Save'}
+                      </Button>
+                      <Button onClick={handleCancelPriorities} variant="outline" size="sm">
+                        <X className="h-4 w-4 mr-2" />
+                        Cancel
+                      </Button>
+                    </div>
+                  )}
+                </div>
+
+                {!isEditingPriorities ? (
+                  <div className="space-y-4">
+                    <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                      <div className="text-center p-3 bg-green-50 rounded-lg">
+                        <DollarSign className="h-6 w-6 text-green-600 mx-auto mb-2" />
+                        <div className="text-2xl font-bold text-green-600">{housingPriorities.budget}%</div>
+                        <div className="text-sm text-muted-foreground">Budget</div>
+                      </div>
+                      <div className="text-center p-3 bg-blue-50 rounded-lg">
+                        <MapPin className="h-6 w-6 text-blue-600 mx-auto mb-2" />
+                        <div className="text-2xl font-bold text-blue-600">{housingPriorities.commute}%</div>
+                        <div className="text-sm text-muted-foreground">Commute</div>
+                      </div>
+                      <div className="text-center p-3 bg-purple-50 rounded-lg">
+                        <ShieldIcon className="h-6 w-6 text-purple-600 mx-auto mb-2" />
+                        <div className="text-2xl font-bold text-purple-600">{housingPriorities.safety}%</div>
+                        <div className="text-sm text-muted-foreground">Safety</div>
+                      </div>
+                      <div className="text-center p-3 bg-orange-50 rounded-lg">
+                        <Users className="h-6 w-6 text-orange-600 mx-auto mb-2" />
+                        <div className="text-2xl font-bold text-orange-600">{housingPriorities.roommates}%</div>
+                        <div className="text-sm text-muted-foreground">Roommates</div>
+                      </div>
+                    </div>
+                    
+                    <div className="flex items-center justify-between">
+                      <span className="text-sm font-medium">Total Priority</span>
+                      <Badge variant="default" className="text-sm">
+                        {housingPriorities.budget + housingPriorities.commute + housingPriorities.safety + housingPriorities.roommates}%
+                      </Badge>
+                    </div>
+                    
+                    <Button 
+                      onClick={() => navigate('/housing-priorities-demo')} 
+                      variant="outline" 
+                      className="w-full"
+                    >
+                      <BarChart3 className="h-4 w-4 mr-2" />
+                      View Priority Demo & Recommendations
+                    </Button>
+                  </div>
+                ) : (
+                  <div className="space-y-6">
+                    {/* Budget Priority */}
+                    <div className="space-y-3">
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                          <DollarSign className="h-4 w-4 text-green-600" />
+                          <span className="font-medium">Budget Affordability</span>
+                        </div>
+                        <Badge variant="outline">{editPriorities.budget}%</Badge>
+                      </div>
+                      <Slider
+                        value={[editPriorities.budget]}
+                        onValueChange={(value) => handlePriorityChange('budget', value)}
+                        max={100}
+                        step={5}
+                        className="w-full"
+                      />
+                      <p className="text-sm text-muted-foreground">
+                        How important is staying within your budget?
+                      </p>
+                    </div>
+
+                    <Separator />
+
+                    {/* Commute Priority */}
+                    <div className="space-y-3">
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                          <MapPin className="h-4 w-4 text-blue-600" />
+                          <span className="font-medium">Commute Distance</span>
+                        </div>
+                        <Badge variant="outline">{editPriorities.commute}%</Badge>
+                      </div>
+                      <Slider
+                        value={[editPriorities.commute]}
+                        onValueChange={(value) => handlePriorityChange('commute', value)}
+                        max={100}
+                        step={5}
+                        className="w-full"
+                      />
+                      <p className="text-sm text-muted-foreground">
+                        How important is living close to campus?
+                      </p>
+                    </div>
+
+                    <Separator />
+
+                    {/* Safety Priority */}
+                    <div className="space-y-3">
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                          <ShieldIcon className="h-4 w-4 text-purple-600" />
+                          <span className="font-medium">Safety & Security</span>
+                        </div>
+                        <Badge variant="outline">{editPriorities.safety}%</Badge>
+                      </div>
+                      <Slider
+                        value={[editPriorities.safety]}
+                        onValueChange={(value) => handlePriorityChange('safety', value)}
+                        max={100}
+                        step={5}
+                        className="w-full"
+                      />
+                      <p className="text-sm text-muted-foreground">
+                        How important is neighborhood safety?
+                      </p>
+                    </div>
+
+                    <Separator />
+
+                    {/* Roommates Priority */}
+                    <div className="space-y-3">
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                          <Users className="h-4 w-4 text-orange-600" />
+                          <span className="font-medium">Roommate Compatibility</span>
+                        </div>
+                        <Badge variant="outline">{editPriorities.roommates}%</Badge>
+                      </div>
+                      <Slider
+                        value={[editPriorities.roommates]}
+                        onValueChange={(value) => handlePriorityChange('roommates', value)}
+                        max={100}
+                        step={5}
+                        className="w-full"
+                      />
+                      <p className="text-sm text-muted-foreground">
+                        How important is finding compatible roommates?
+                      </p>
+                    </div>
+
+                    {/* Total Validation */}
+                    <div className="pt-4">
+                      <div className="flex items-center justify-between mb-2">
+                        <span className="font-medium">Total Priority</span>
+                        <Badge variant={isPrioritiesValid() ? "default" : "destructive"}>
+                          {getTotalPriorities()}%
+                        </Badge>
+                      </div>
+                      <Progress
+                        value={getTotalPriorities()}
+                        className="h-2"
+                      />
+                      {!isPrioritiesValid() && (
+                        <Alert variant="destructive" className="mt-2">
+                          <AlertDescription>
+                            Priorities must total exactly 100% to save
+                          </AlertDescription>
+                        </Alert>
+                      )}
+                    </div>
+                  </div>
+                )}
               </div>
 
               {/* Delete Account Section */}

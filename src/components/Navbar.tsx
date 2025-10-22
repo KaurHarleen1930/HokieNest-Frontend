@@ -1,7 +1,7 @@
 import { Link, useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { useAuth } from "@/lib/auth";
-import { Home, LogOut, User, Shield, UserCircle, LayoutDashboard, Target } from "lucide-react";
+import { Home, LogOut, User, Shield, UserCircle, LayoutDashboard, Target, BarChart3, Settings } from "lucide-react";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -52,6 +52,12 @@ export function Navbar() {
         >
           Find Roommates
         </Link>
+        <Link
+          to="/priority-dashboard"
+          className="text-foreground hover:text-accent transition-colors font-medium"
+        >
+          Priorities
+        </Link>
               <Link
                 to="/dashboard"
                 className="text-foreground hover:text-accent transition-colors font-medium"
@@ -99,6 +105,14 @@ export function Navbar() {
         <DropdownMenuItem onClick={() => navigate('/roommate-questionnaire')}>
           <Target className="h-4 w-4 mr-2" />
           Complete Questionnaire
+        </DropdownMenuItem>
+        <DropdownMenuItem onClick={() => navigate('/priority-dashboard')}>
+          <BarChart3 className="h-4 w-4 mr-2" />
+          Housing Priorities
+        </DropdownMenuItem>
+        <DropdownMenuItem onClick={() => navigate('/housing-priorities-demo')}>
+          <Settings className="h-4 w-4 mr-2" />
+          Priority Demo
         </DropdownMenuItem>
                 {user?.role === 'admin' && (
                   <>

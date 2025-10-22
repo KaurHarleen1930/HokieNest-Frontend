@@ -470,6 +470,15 @@ export const preferencesAPI = {
     });
   },
 
+  // Get housing priorities
+  getHousingPriorities: async (): Promise<{ 
+    priorities: { budget: number; commute: number; safety: number; roommates: number };
+    isDefault: boolean;
+    lastUpdated?: string;
+  }> => {
+    return apiRequest('/preferences/housing-priorities');
+  },
+
   // Save housing priorities
   saveHousingPriorities: async (priorities: {
     budget: number;
