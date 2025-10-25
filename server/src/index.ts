@@ -10,6 +10,10 @@ import { preferencesRoutes } from './routes/preferences';
 import { roommatesRoutes } from './routes/roommates';
 import { priorityWeightsRoutes } from './routes/priority-weights';
 import chatbotRoutes from './routes/chatbot';
+import connectionsRoutes from './routes/connections';
+import chatRoutes from './routes/chat';
+import notificationsRoutes from './routes/notifications';
+import statusRoutes from './routes/status';
 import { errorHandler } from './middleware/errorHandler';
 
 dotenv.config({ path: './.env' });
@@ -22,7 +26,10 @@ app.use(cors({
   origin: ['http://localhost:5173', 'http://localhost:5174', 'http://localhost:8080', 'http://localhost:3000'],
   credentials: true,
 }));
-app.use(express.json());
+// CHANGE: Increased body size limits to support file uploads
+// Base64 encoded files are ~33% larger than original, so 50MB limit supports ~37MB files
+app.use(express.json({ limit: '50mb' }));
+app.use(express.urlencoded({ limit: '50mb', extended: true }));
 
 
 // Session configuration for OAuth
@@ -50,6 +57,10 @@ app.use('/api/v1/preferences', preferencesRoutes);
 app.use('/api/v1/roommates', roommatesRoutes);
 app.use('/api/v1/priority-weights', priorityWeightsRoutes);
 app.use('/api/v1/chatbot', chatbotRoutes);
+app.use('/api/v1/connections', connectionsRoutes);
+app.use('/api/v1/chat', chatRoutes);
+app.use('/api/v1/notifications', notificationsRoutes);
+app.use('/api/v1/status', statusRoutes);
 
 // Error handling
 app.use(errorHandler);
