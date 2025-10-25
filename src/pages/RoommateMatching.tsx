@@ -3,6 +3,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { EmptyState } from "@/components/ui/empty-state";
+import { ConnectionRequestModal } from "@/components/ConnectionRequestModal";
 import { Heart, Star, Users, DollarSign, Clock, Home, Target, AlertCircle, Settings } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "@/lib/auth";
@@ -44,6 +45,8 @@ export default function RoommateMatching() {
   const [roommates, setRoommates] = useState<RoommateProfile[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [selectedRoommate, setSelectedRoommate] = useState<RoommateProfile | null>(null);
+  const [isConnectionModalOpen, setIsConnectionModalOpen] = useState(false);
 
   useEffect(() => {
     console.log("RoommateMatching: useEffect running, isAuthenticated:", isAuthenticated);
@@ -99,6 +102,16 @@ export default function RoommateMatching() {
     if (score >= 80) return "Great Match";
     if (score >= 70) return "Good Match";
     return "Fair Match";
+  };
+
+  const handleConnectClick = (roommate: RoommateProfile) => {
+    setSelectedRoommate(roommate);
+    setIsConnectionModalOpen(true);
+  };
+
+  const handleCloseModal = () => {
+    setIsConnectionModalOpen(false);
+    setSelectedRoommate(null);
   };
 
   console.log("RoommateMatching: Render", { loading, roommatesCount: roommates.length, isAuthenticated, error });
@@ -270,7 +283,10 @@ export default function RoommateMatching() {
 
               {/* Action Buttons */}
               <div className="flex gap-2 pt-2">
-                <Button className="flex-1 gap-2">
+                <Button 
+                  className="flex-1 gap-2"
+                  onClick={() => handleConnectClick(roommate)}
+                >
                   <Heart className="h-4 w-4" />
                   Connect
                 </Button>
@@ -279,6 +295,20 @@ export default function RoommateMatching() {
           </Card>
         ))}
       </div>
+
+      {/* Connection Request Modal */}
+      {selectedRoommate && (
+        <ConnectionRequestModal
+          isOpen={isConnectionModalOpen}
+          onClose={handleCloseModal}
+          roommate={{
+            id: selectedRoommate.id,
+            name: selectedRoommate.name,
+            email: selectedRoommate.email,
+            compatibilityScore: selectedRoommate.compatibilityScore,
+          }}
+        />
+      )}
     </div>
   );
 }

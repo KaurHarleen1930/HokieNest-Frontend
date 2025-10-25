@@ -1,7 +1,7 @@
 import { Link, useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { useAuth } from "@/lib/auth";
-import { Home, LogOut, User, Shield, UserCircle, LayoutDashboard, Target } from "lucide-react";
+import { Home, LogOut, User, Shield, UserCircle, LayoutDashboard, Target, MessageCircle, Bell } from "lucide-react";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -11,6 +11,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { NotificationBell } from "@/components/notifications/NotificationBell";
 
 export function Navbar() {
   const { user, logout, isAuthenticated } = useAuth();
@@ -52,6 +53,19 @@ export function Navbar() {
         >
           Find Roommates
         </Link>
+        <Link
+          to="/messages"
+          className="text-foreground hover:text-accent transition-colors font-medium"
+        >
+          Messages
+        </Link>
+        {/* CHANGE: Added Notifications link to navbar */}
+        <Link
+          to="/notifications"
+          className="text-foreground hover:text-accent transition-colors font-medium"
+        >
+          Notifications
+        </Link>
               <Link
                 to="/dashboard"
                 className="text-foreground hover:text-accent transition-colors font-medium"
@@ -65,7 +79,9 @@ export function Navbar() {
         {/* Auth Section */}
         <div className="flex items-center gap-3">
           {isAuthenticated ? (
-            <DropdownMenu>
+            <>
+              <NotificationBell />
+              <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <Button variant="ghost" className="flex items-center gap-2">
                   <Avatar className="h-8 w-8">
@@ -96,6 +112,15 @@ export function Navbar() {
                   <Home className="h-4 w-4 mr-2" />
                   Properties
                 </DropdownMenuItem>
+        <DropdownMenuItem onClick={() => navigate('/messages')}>
+          <MessageCircle className="h-4 w-4 mr-2" />
+          Messages
+        </DropdownMenuItem>
+        {/* CHANGE: Added Notifications to dropdown menu */}
+        <DropdownMenuItem onClick={() => navigate('/notifications')}>
+          <Bell className="h-4 w-4 mr-2" />
+          Notifications
+        </DropdownMenuItem>
         <DropdownMenuItem onClick={() => navigate('/roommate-questionnaire')}>
           <Target className="h-4 w-4 mr-2" />
           Complete Questionnaire
@@ -116,6 +141,7 @@ export function Navbar() {
                 </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
+            </>
           ) : (
             <div className="flex gap-2">
               <Button
