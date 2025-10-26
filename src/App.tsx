@@ -25,6 +25,7 @@ import RoommateMatching from "./pages/RoommateMatching";
 import PriorityRankingPage from "./pages/PriorityRankingPage";
 import PriorityDashboard from "./pages/PriorityDashboard";
 import HousingPrioritiesDemo from "./pages/HousingPrioritiesDemo";
+import ChatbotWidget from "./components/ChatbotWidget";
 import 'leaflet/dist/leaflet.css';
 
 const queryClient = new QueryClient();
@@ -92,6 +93,7 @@ const App = () => (
               {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
               <Route path="*" element={<NotFound />} />
             </Routes>
+            <ChatbotWidget />
           </div>
         </BrowserRouter>
       </AuthProvider>

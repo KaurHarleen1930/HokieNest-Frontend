@@ -493,6 +493,77 @@ export const preferencesAPI = {
   },
 };
 
+// Chatbot API
+export const chatbotAPI = {
+  // Send message to chatbot
+  sendMessage: async (message: string, sessionId?: string, currentPage?: string): Promise<{
+    success: boolean;
+    data: {
+      response: string;
+      sources?: string[];
+      suggestions?: string[];
+      confidence: number;
+      cost: number;
+      tokens: number;
+    };
+    timestamp: string;
+  }> => {
+    return apiRequest('/chatbot/chat', {
+      method: 'POST',
+      body: JSON.stringify({
+        message,
+        sessionId,
+        currentPage,
+      }),
+    });
+  },
+
+  // Send public message (no auth required)
+  sendPublicMessage: async (message: string, sessionId?: string, currentPage?: string): Promise<{
+    success: boolean;
+    data: {
+      response: string;
+      sources?: string[];
+      suggestions?: string[];
+      confidence: number;
+      cost: number;
+      tokens: number;
+    };
+    timestamp: string;
+  }> => {
+    return apiRequest('/chatbot/chat/public', {
+      method: 'POST',
+      body: JSON.stringify({
+        message,
+        sessionId,
+        currentPage,
+      }),
+    });
+  },
+
+  // Get FAQ items
+  getFAQ: async (category?: string, limit?: number): Promise<{
+    success: boolean;
+    data: any[];
+    count: number;
+  }> => {
+    const params = new URLSearchParams();
+    if (category) params.append('category', category);
+    if (limit) params.append('limit', limit.toString());
+    
+    return apiRequest(`/chatbot/faq?${params.toString()}`);
+  },
+
+  // Health check
+  getHealth: async (): Promise<{
+    success: boolean;
+    message: string;
+    timestamp: string;
+  }> => {
+    return apiRequest('/chatbot/health');
+  },
+};
+
 // Priority Weights API
 export const priorityWeightsAPI = {
   // Save user priority weights
