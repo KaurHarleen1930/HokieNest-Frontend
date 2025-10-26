@@ -3,10 +3,9 @@ import { useAuth } from '@/lib/auth';
 import { chatAPI } from '@/lib/api';
 import { ConversationList } from '@/components/chat/ConversationList';
 import { ChatWindow } from '@/components/chat/ChatWindow';
-import { CreateGroupChatModal } from '@/components/chat/CreateGroupChatModal';
 import { Button } from '@/components/ui/button';
 import { EmptyState } from '@/components/ui/empty-state';
-import { MessageCircle, Users, ArrowLeft, UserPlus } from 'lucide-react';
+import { MessageCircle, ArrowLeft } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 
 interface Conversation {
@@ -46,7 +45,6 @@ export default function Messages() {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [isMobile, setIsMobile] = useState(false);
-  const [showCreateGroupModal, setShowCreateGroupModal] = useState(false); // CHANGE: State for group chat modal
 
   useEffect(() => {
     if (!isAuthenticated) {
@@ -116,20 +114,6 @@ export default function Messages() {
     }
   };
 
-  /**
-   * CHANGE: Handle group chat creation
-   */
-  const handleGroupCreated = (conversation: Conversation) => {
-    // Add new conversation to the list
-    setConversations(prev => [conversation, ...prev]);
-    
-    // Select the new conversation
-    setSelectedConversation(conversation);
-    
-    // Reload conversations to get updated data
-    loadConversations();
-  };
-
   if (!isAuthenticated) {
     return (
       <div className="min-h-screen flex items-center justify-center">
@@ -185,15 +169,6 @@ export default function Messages() {
                 </p>
               </div>
             </div>
-            
-            {/* CHANGE: Added Create Group Chat button */}
-            <Button
-              onClick={() => setShowCreateGroupModal(true)}
-              className="gap-2"
-            >
-              <Users className="h-4 w-4" />
-              Create Group
-            </Button>
           </div>
         </div>
       </div>
@@ -255,14 +230,6 @@ export default function Messages() {
           </div>
         </div>
       </div>
-
-      {/* CHANGE: Create Group Chat Modal */}
-      <CreateGroupChatModal
-        isOpen={showCreateGroupModal}
-        onClose={() => setShowCreateGroupModal(false)}
-        onGroupCreated={handleGroupCreated}
-        currentUserId={user?.id ? parseInt(user.id) : 0}
-      />
     </div>
   );
 }

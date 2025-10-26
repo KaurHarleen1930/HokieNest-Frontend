@@ -643,17 +643,6 @@ export const chatAPI = {
     return apiRequest<{ success: boolean; indicators: any[] }>(`/chat/conversations/${conversationId}/typing`);
   },
 
-  // CHANGE: Create a group chat
-  createGroupChat: async (groupName: string, participantIds: number[]): Promise<{ success: boolean; conversation: any; message: string }> => {
-    return apiRequest<{ success: boolean; conversation: any; message: string }>('/chat/conversations/group', {
-      method: 'POST',
-      body: JSON.stringify({
-        group_name: groupName,
-        participant_ids: participantIds
-      }),
-    });
-  },
-
   // Upload file
   uploadFile: async (file: File): Promise<{ success: boolean; url: string; size: number }> => {
     // CHANGE: Convert file to base64 and send as JSON
