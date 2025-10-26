@@ -5,6 +5,7 @@ import { Badge } from "@/components/ui/badge";
 import { EmptyState } from "@/components/ui/empty-state";
 import { Slider } from "@/components/ui/slider";
 import { Label } from "@/components/ui/label";
+import { ConnectionRequestModal } from "@/components/ConnectionRequestModal";
 import { Heart, Star, Users, DollarSign, Clock, Home, Target, Settings, Zap, Info } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "@/lib/auth";
@@ -79,6 +80,8 @@ export default function EnhancedRoommateMatching() {
     const [questionWeights, setQuestionWeights] = useState<QuestionWeight[]>(defaultWeights);
     const [showWeightSettings, setShowWeightSettings] = useState(false);
     const [weightsChanged, setWeightsChanged] = useState(false);
+    const [selectedRoommate, setSelectedRoommate] = useState<RoommateProfile | null>(null);
+    const [isConnectionModalOpen, setIsConnectionModalOpen] = useState(false);
 
     // Load saved weights from localStorage
     useEffect(() => {
@@ -226,6 +229,16 @@ export default function EnhancedRoommateMatching() {
         if (score >= 80) return "Great Match";
         if (score >= 70) return "Good Match";
         return "Fair Match";
+    };
+
+    const handleConnectClick = (roommate: RoommateProfile) => {
+        setSelectedRoommate(roommate);
+        setIsConnectionModalOpen(true);
+    };
+
+    const handleCloseModal = () => {
+        setIsConnectionModalOpen(false);
+        setSelectedRoommate(null);
     };
 
     console.log("EnhancedRoommateMatching: Render", { loading, roommatesCount: roommates.length, isAuthenticated });
@@ -466,7 +479,10 @@ export default function EnhancedRoommateMatching() {
 
                             {/* Action Buttons */}
                             <div className="flex gap-2 pt-2">
-                                <Button className="flex-1 gap-2">
+                                <Button 
+                                    className="flex-1 gap-2"
+                                    onClick={() => handleConnectClick(roommate)}
+                                >
                                     <Heart className="h-4 w-4" />
                                     Connect
                                 </Button>
@@ -478,6 +494,20 @@ export default function EnhancedRoommateMatching() {
                     </Card>
                 ))}
             </div>
+
+            {/* Connection Request Modal */}
+            {selectedRoommate && (
+                <ConnectionRequestModal
+                    isOpen={isConnectionModalOpen}
+                    onClose={handleCloseModal}
+                    roommate={{
+                        id: selectedRoommate.id,
+                        name: selectedRoommate.name,
+                        email: selectedRoommate.email,
+                        compatibilityScore: selectedRoommate.weightedScore || selectedRoommate.compatibilityScore,
+                    }}
+                />
+            )}
         </div>
     );
 }

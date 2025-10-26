@@ -233,10 +233,14 @@ async function apiRequest<T>(
   console.log('🔍 API Request:', url);
 
   try {
+    // CHANGE: Don't set Content-Type for FormData (browser sets it automatically with boundary)
+    const isFormData = options.body instanceof FormData;
+    
     const response = await fetch(url, {
       ...options,
       headers: {
-        'Content-Type': 'application/json',
+        // Only set Content-Type for JSON requests, not FormData
+        ...(!isFormData && { 'Content-Type': 'application/json' }),
         ...(token && { Authorization: `Bearer ${token}` }),
         ...options.headers,
       },
@@ -245,9 +249,11 @@ async function apiRequest<T>(
     console.log('📡 API Response:', response.status, response.statusText);
 
     if (!response.ok) {
-      const error = await response.json().catch(() => ({}));
-      console.error('❌ API Error:', response.status, error);
-      throw new APIError(response.status, error.message || 'Request failed');
+      const errorData = await response.json().catch(() => ({}));
+      console.error('❌ API Error:', response.status, errorData);
+      // CHANGE: Backend sends { error: "message" } so we need to access errorData.error
+      const errorMessage = errorData.error || errorData.message || 'Request failed';
+      throw new APIError(response.status, errorMessage);
     }
 
     const data = await response.json();
@@ -593,5 +599,255 @@ export const priorityWeightsAPI = {
     return apiRequest<{ matches: any[]; total: number; message: string }>(`/priority-weights/matches?limit=${limit}`, {
       method: 'GET',
     });
+  },
+};
+
+// Connections API
+export const connectionsAPI = {
+  // Send connection request
+  sendRequest: async (recipientId: number, message?: string): Promise<{ success: boolean; connection: any; message: string }> => {
+    return apiRequest<{ success: boolean; connection: any; message: string }>('/connections/request', {
+      method: 'POST',
+      body: JSON.stringify({ recipient_id: recipientId, message }),
+    });
+  },
+
+  // Get all connections
+  getConnections: async (status?: string): Promise<{ success: boolean; connections: any[] }> => {
+    const params = status ? `?status=${status}` : '';
+    return apiRequest<{ success: boolean; connections: any[] }>(`/connections${params}`);
+  },
+
+  // Get pending requests
+  getPendingRequests: async (): Promise<{ success: boolean; connections: any[] }> => {
+    return apiRequest<{ success: boolean; connections: any[] }>('/connections/pending');
+  },
+
+  // Accept connection
+  acceptConnection: async (connectionId: string): Promise<{ success: boolean; connection: any; conversation: any; message: string }> => {
+    return apiRequest<{ success: boolean; connection: any; conversation: any; message: string }>(`/connections/${connectionId}/accept`, {
+      method: 'PUT',
+    });
+  },
+
+  // Reject connection
+  rejectConnection: async (connectionId: string): Promise<{ success: boolean; connection: any; message: string }> => {
+    return apiRequest<{ success: boolean; connection: any; message: string }>(`/connections/${connectionId}/reject`, {
+      method: 'PUT',
+    });
+  },
+
+  // Remove connection
+  removeConnection: async (connectionId: string): Promise<{ success: boolean; message: string }> => {
+    return apiRequest<{ success: boolean; message: string }>(`/connections/${connectionId}`, {
+      method: 'DELETE',
+    });
+  },
+
+  // Check if users are connected
+  checkConnection: async (userId: number): Promise<{ success: boolean; areConnected: boolean }> => {
+    return apiRequest<{ success: boolean; areConnected: boolean }>(`/connections/check/${userId}`);
+  },
+
+  // Get connection between users
+  getConnectionBetween: async (userId: number): Promise<{ success: boolean; connection: any }> => {
+    return apiRequest<{ success: boolean; connection: any }>(`/connections/between/${userId}`);
+  },
+};
+
+// Chat API
+export const chatAPI = {
+  // Get conversations
+  getConversations: async (): Promise<{ success: boolean; conversations: any[] }> => {
+    return apiRequest<{ success: boolean; conversations: any[] }>('/chat/conversations');
+  },
+
+  // Get messages
+  getMessages: async (conversationId: string, page: number = 1, limit: number = 20): Promise<{ success: boolean; messages: any[]; hasMore: boolean }> => {
+    return apiRequest<{ success: boolean; messages: any[]; hasMore: boolean }>(`/chat/conversations/${conversationId}/messages?page=${page}&limit=${limit}`);
+  },
+
+  // Send message
+  sendMessage: async (conversationId: string, messageText: string, messageType: 'text' | 'file' | 'image' | 'document' = 'text', fileUrl?: string, fileName?: string, fileSize?: number): Promise<{ success: boolean; message: any }> => {
+    return apiRequest<{ success: boolean; message: any }>(`/chat/conversations/${conversationId}/messages`, {
+      method: 'POST',
+      body: JSON.stringify({
+        message_text: messageText,
+        message_type: messageType,
+        file_url: fileUrl,
+        file_name: fileName,
+        file_size: fileSize,
+      }),
+    });
+  },
+
+  // Edit message
+  editMessage: async (messageId: string, messageText: string): Promise<{ success: boolean; message: any }> => {
+    return apiRequest<{ success: boolean; message: any }>(`/chat/messages/${messageId}`, {
+      method: 'PUT',
+      body: JSON.stringify({ message_text: messageText }),
+    });
+  },
+
+  // Delete message
+  deleteMessage: async (messageId: string): Promise<{ success: boolean; message: string }> => {
+    return apiRequest<{ success: boolean; message: string }>(`/chat/messages/${messageId}`, {
+      method: 'DELETE',
+    });
+  },
+
+  // Mark message as read
+  markMessageAsRead: async (messageId: string): Promise<{ success: boolean; message: string }> => {
+    return apiRequest<{ success: boolean; message: string }>(`/chat/messages/${messageId}/read`, {
+      method: 'POST',
+    });
+  },
+
+  // Mark conversation as read
+  markConversationAsRead: async (conversationId: string): Promise<{ success: boolean; message: string }> => {
+    return apiRequest<{ success: boolean; message: string }>(`/chat/conversations/${conversationId}/read`, {
+      method: 'POST',
+    });
+  },
+
+  // Update typing indicator
+  updateTyping: async (conversationId: string, isTyping: boolean): Promise<{ success: boolean; message: string }> => {
+    return apiRequest<{ success: boolean; message: string }>(`/chat/conversations/${conversationId}/typing`, {
+      method: 'POST',
+      body: JSON.stringify({ is_typing: isTyping }),
+    });
+  },
+
+  // Get typing indicators
+  getTypingIndicators: async (conversationId: string): Promise<{ success: boolean; indicators: any[] }> => {
+    return apiRequest<{ success: boolean; indicators: any[] }>(`/chat/conversations/${conversationId}/typing`);
+  },
+
+  // Upload file
+  uploadFile: async (file: File): Promise<{ success: boolean; url: string; size: number }> => {
+    // CHANGE: Convert file to base64 and send as JSON
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      
+      reader.onload = async () => {
+        try {
+          // Extract base64 data (remove data:...;base64, prefix)
+          const base64String = (reader.result as string).split(',')[1];
+          
+          const response = await apiRequest<{ success: boolean; url: string; size: number }>('/chat/upload', {
+            method: 'POST',
+            body: JSON.stringify({
+              fileData: base64String,
+              fileName: file.name,
+              fileType: file.type,
+              fileSize: file.size
+            }),
+          });
+          
+          resolve(response);
+        } catch (error) {
+          reject(error);
+        }
+      };
+      
+      reader.onerror = () => {
+        reject(new Error('Failed to read file'));
+      };
+      
+      reader.readAsDataURL(file);
+    });
+  },
+};
+
+// Notifications API
+export const notificationsAPI = {
+  // Get notifications
+  getNotifications: async (page: number = 1, limit: number = 20, unreadOnly: boolean = false): Promise<{ success: boolean; notifications: any[]; hasMore: boolean; total: number }> => {
+    const params = new URLSearchParams({
+      page: page.toString(),
+      limit: limit.toString(),
+      ...(unreadOnly && { unread_only: 'true' }),
+    });
+    return apiRequest<{ success: boolean; notifications: any[]; hasMore: boolean; total: number }>(`/notifications?${params}`);
+  },
+
+  // Mark notification as read
+  markAsRead: async (notificationId: string): Promise<{ success: boolean; message: string }> => {
+    return apiRequest<{ success: boolean; message: string }>(`/notifications/${notificationId}/read`, {
+      method: 'PUT',
+    });
+  },
+
+  // Mark all as read
+  markAllAsRead: async (): Promise<{ success: boolean; message: string }> => {
+    return apiRequest<{ success: boolean; message: string }>(`/notifications/read-all`, {
+      method: 'PUT',
+    });
+  },
+
+  // Delete notification - PERMANENTLY removes from database
+  // CHANGE: This sends a DELETE request to remove the notification row from the notifications table
+  deleteNotification: async (notificationId: string): Promise<{ success: boolean; message: string }> => {
+    return apiRequest<{ success: boolean; message: string }>(`/notifications/${notificationId}`, {
+      method: 'DELETE',
+    });
+  },
+
+  // Delete all notifications - PERMANENTLY removes ALL from database
+  // CHANGE: This sends a DELETE request to remove ALL notification rows from the notifications table
+  deleteAllNotifications: async (): Promise<{ success: boolean; message: string }> => {
+    return apiRequest<{ success: boolean; message: string }>(`/notifications/clear-all`, {
+      method: 'DELETE',
+    });
+  },
+
+  // Get preferences
+  getPreferences: async (): Promise<{ success: boolean; preferences: any }> => {
+    return apiRequest<{ success: boolean; preferences: any }>(`/notifications/preferences`);
+  },
+
+  // Update preferences
+  updatePreferences: async (preferences: any): Promise<{ success: boolean; preferences: any; message: string }> => {
+    return apiRequest<{ success: boolean; preferences: any; message: string }>(`/notifications/preferences`, {
+      method: 'PUT',
+      body: JSON.stringify(preferences),
+    });
+  },
+
+  // Get unread count
+  getUnreadCount: async (): Promise<{ success: boolean; unreadCount: number }> => {
+    return apiRequest<{ success: boolean; unreadCount: number }>(`/notifications/unread-count`);
+  },
+};
+
+// Status API
+export const statusAPI = {
+  // Set online
+  setOnline: async (): Promise<{ success: boolean; status: any; message: string }> => {
+    return apiRequest<{ success: boolean; status: any; message: string }>('/status/online', {
+      method: 'POST',
+    });
+  },
+
+  // Set offline
+  setOffline: async (): Promise<{ success: boolean; status: any; message: string }> => {
+    return apiRequest<{ success: boolean; status: any; message: string }>('/status/offline', {
+      method: 'POST',
+    });
+  },
+
+  // Get user status
+  getUserStatus: async (userId: number): Promise<{ success: boolean; status: any }> => {
+    return apiRequest<{ success: boolean; status: any }>(`/status/${userId}`);
+  },
+
+  // Get online users
+  getOnlineUsers: async (): Promise<{ success: boolean; users: any[] }> => {
+    return apiRequest<{ success: boolean; users: any[] }>('/status/online');
+  },
+
+  // Get current user status
+  getMyStatus: async (): Promise<{ success: boolean; status: any }> => {
+    return apiRequest<{ success: boolean; status: any }>('/status/me');
   },
 };

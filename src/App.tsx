@@ -26,6 +26,9 @@ import PriorityRankingPage from "./pages/PriorityRankingPage";
 import PriorityDashboard from "./pages/PriorityDashboard";
 import HousingPrioritiesDemo from "./pages/HousingPrioritiesDemo";
 import ChatbotWidget from "./components/ChatbotWidget";
+import Messages from "./pages/Messages";
+import NotificationsPage from "./pages/NotificationsPage";
+import Conversation from "./pages/Conversation";
 import 'leaflet/dist/leaflet.css';
 
 const queryClient = new QueryClient();
@@ -90,7 +93,22 @@ const App = () => (
                   <Admin />
                 </ProtectedRoute>
               } />
-              {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
+              <Route path="/messages" element={
+  <ProtectedRoute>
+    <Messages />
+  </ProtectedRoute>
+} />
+              <Route path="/notifications" element={
+  <ProtectedRoute>
+    <NotificationsPage />
+  </ProtectedRoute>
+} />
+              <Route path="/conversation/:conversationId" element={
+  <ProtectedRoute>
+    <Conversation />
+  </ProtectedRoute>
+} />
+{/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
               <Route path="*" element={<NotFound />} />
             </Routes>
             <ChatbotWidget />
