@@ -51,6 +51,7 @@ export interface Listing {
     distance: number;
     distanceText: string;
   }>;
+  
 }
 
 export interface User {

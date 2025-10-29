@@ -9,6 +9,7 @@ import { useNavigate } from "react-router-dom";
 import { useAuth } from "@/lib/auth";
 import { roommatesAPI } from "@/lib/api";
 import { useToast } from "@/hooks/use-toast";
+import { HousingStatus, HousingStatusLabels } from "@/types/HousingStatus";
 
 interface RoommateProfile {
   id: string;
@@ -18,6 +19,7 @@ interface RoommateProfile {
   gender: string;
   major: string;
   compatibilityScore: number;
+  housing_status?: HousingStatus;
   preferences: {
     budgetRange: [number, number];
     sleepSchedule: string;
@@ -65,8 +67,15 @@ export default function RoommateMatching() {
         const response = await roommatesAPI.findMatches(50);
 
         console.log("RoommateMatching: Received matches", response);
-        setRoommates(response.matches);
 
+        // TEMP: Add random housing statuses for demo
+         const statuses = Object.values(HousingStatus);
+        const enrichedMatches = response.matches.map((r: any) => ({
+          ...r,
+          housing_status: statuses[Math.floor(Math.random() * statuses.length)],
+     }));
+
+setRoommates(enrichedMatches);
         if (response.matches.length === 0) {
           toast({
             title: "No matches found",
@@ -222,19 +231,31 @@ export default function RoommateMatching() {
       <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
         {roommates.map((roommate) => (
           <Card key={roommate.id} className="overflow-hidden hover:shadow-lg transition-shadow">
-            <CardHeader className="pb-4">
-              <div className="flex items-start justify-between">
-                <div>
-                  <CardTitle className="text-lg">{roommate.name}</CardTitle>
-                  <p className="text-sm text-muted-foreground">{roommate.major}</p>
-                  <p className="text-xs text-muted-foreground">{roommate.age} years old</p>
-                </div>
-                <Badge className={`${getCompatibilityColor(roommate.compatibilityScore)} border-0`}>
-                  <Star className="h-3 w-3 mr-1" />
-                  {roommate.compatibilityScore}%
+            <CardHeader className="pb-4 relative">
+              {/* Housing Status & Match Score Container */}
+              <div className="absolute top-3 right-3 flex flex-col items-end gap-1">
+               {roommate.housing_status && (
+                <Badge
+                    variant="secondary"
+                    className="text-xs bg-primary/10 text-primary border-0"
+                 >
+                    {HousingStatusLabels[roommate.housing_status]}
                 </Badge>
-              </div>
-            </CardHeader>
+                )}
+                 <Badge
+                   className={`${getCompatibilityColor(roommate.compatibilityScore)} border-0 text-xs`}
+                  >
+                   <Star className="h-3 w-3 mr-1" />
+                      {roommate.compatibilityScore}%
+                  </Badge>
+               </div>
+
+              <div>
+              <CardTitle className="text-lg">{roommate.name}</CardTitle>
+              <p className="text-sm text-muted-foreground">{roommate.major}</p>
+              <p className="text-xs text-muted-foreground">{roommate.age} years old</p>
+             </div>
+           </CardHeader>
 
             <CardContent className="space-y-4">
               {/* Compatibility Info */}
