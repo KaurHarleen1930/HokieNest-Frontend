@@ -17,7 +17,9 @@ import {
   MoreVertical,
   Info,
   Trash2,
-  UserX
+  UserX,
+  Bell,
+  BellOff
 } from 'lucide-react';
 import {
   DropdownMenu,
@@ -88,6 +90,7 @@ export function ChatWindow({ conversation, currentUserId, onBack }: ChatWindowPr
   // CHANGE: Added state for delete confirmation dialogs
   const [showDeleteConversationDialog, setShowDeleteConversationDialog] = useState(false);
   const [messageToDelete, setMessageToDelete] = useState<string | null>(null);
+  const [isMuted, setIsMuted] = useState(false);
   
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -97,12 +100,62 @@ export function ChatWindow({ conversation, currentUserId, onBack }: ChatWindowPr
   useEffect(() => {
     if (conversation) {
       loadMessages();
+      loadMuteStatus();
     } else {
       setMessages([]);
       setPage(1);
       setHasMore(true);
+      setIsMuted(false);
     }
   }, [conversation?.id]);
+
+  const loadMuteStatus = async () => {
+    if (!conversation) return;
+    try {
+      // Check if conversation is muted (this would come from backend)
+      // For now, we'll use localStorage to persist mute status
+      const mutedKey = `conversation_muted_${conversation.id}`;
+      const muted = localStorage.getItem(mutedKey) === 'true';
+      setIsMuted(muted);
+    } catch (error) {
+      console.error('Failed to load mute status:', error);
+    }
+  };
+
+  const handleToggleMute = async () => {
+    if (!conversation) return;
+    try {
+      const newMutedStatus = !isMuted;
+      setIsMuted(newMutedStatus);
+      
+      // Store in localStorage for now (backend can be added later)
+      const mutedKey = `conversation_muted_${conversation.id}`;
+      if (newMutedStatus) {
+        localStorage.setItem(mutedKey, 'true');
+      } else {
+        localStorage.removeItem(mutedKey);
+      }
+      
+      // TODO: Add backend API call here when endpoint is ready
+      // await chatAPI.toggleMuteConversation(conversation.id, newMutedStatus);
+      
+      toast({
+        title: newMutedStatus ? "Conversation muted" : "Conversation unmuted",
+        description: newMutedStatus 
+          ? "You won't receive notifications for this conversation"
+          : "You will receive notifications for this conversation",
+      });
+    } catch (error) {
+      console.error('Failed to toggle mute:', error);
+      toast({
+        title: "Failed to update mute status",
+        description: "Something went wrong. Please try again.",
+        variant: "destructive",
+      });
+      // Revert on error
+      setIsMuted(!isMuted);
+    }
+  };
 
   // CHANGE: Subscribe to realtime messages and typing indicators for this conversation
   useEffect(() => {
@@ -386,6 +439,20 @@ export function ChatWindow({ conversation, currentUserId, onBack }: ChatWindowPr
               <DropdownMenuItem>
                 <Info className="h-4 w-4 mr-2" />
                 View Info
+              </DropdownMenuItem>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem onClick={handleToggleMute}>
+                {isMuted ? (
+                  <>
+                    <Bell className="h-4 w-4 mr-2" />
+                    Unmute Conversation
+                  </>
+                ) : (
+                  <>
+                    <BellOff className="h-4 w-4 mr-2" />
+                    Mute Conversation
+                  </>
+                )}
               </DropdownMenuItem>
               <DropdownMenuSeparator />
               {/* CHANGE: Added delete conversation option */}

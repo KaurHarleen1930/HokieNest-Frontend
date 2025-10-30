@@ -112,10 +112,70 @@ export default function Messages() {
       setLoadingRequests(true);
       const response = await notificationsAPI.getNotifications(1, 50, false);
       // Filter to only show connection requests
-      const requests = response.notifications.filter(
-        (n: ConnectionRequest) => n.notification_type === 'connection_request'
+      let requests = response.notifications.filter(
+        (n: ConnectionRequest) => n.notification_type === 'connection_request' && n.related_id
       );
-      setConnectionRequests(requests);
+      
+      // Validate each request against actual connection status
+      // Only show notifications for connections that are still pending
+      // Load all connections to validate against
+      let allConnections: any[] = [];
+      try {
+        const connectionsResponse = await connectionsAPI.getConnections();
+        if (connectionsResponse.success && connectionsResponse.connections) {
+          allConnections = connectionsResponse.connections;
+        }
+      } catch (e) {
+        console.error('Failed to load connections for validation:', e);
+      }
+      
+      const validatedRequests = [];
+      for (const request of requests) {
+        try {
+          if (!request.related_id) {
+            // No connection ID, skip it
+            continue;
+          }
+          
+          // Find the connection by ID in the allConnections list
+          const connection = allConnections.find(c => c.id === request.related_id);
+          
+          if (!connection) {
+            // Connection doesn't exist (was deleted/rejected), delete the stale notification
+            try {
+              await notificationsAPI.deleteNotification(request.id);
+              console.log(`🗑️ Deleted stale notification ${request.id} for non-existent connection ${request.related_id}`);
+            } catch (e) {
+              console.error('Failed to delete stale notification:', e);
+            }
+            continue;
+          }
+          
+          // Only include if connection is still pending
+          if (connection.status === 'pending') {
+            validatedRequests.push(request);
+          } else {
+            // Connection already processed (accepted/rejected), delete the stale notification
+            try {
+              await notificationsAPI.deleteNotification(request.id);
+              console.log(`🗑️ Deleted stale notification ${request.id} for already-processed connection ${request.related_id} (status: ${connection.status})`);
+            } catch (e) {
+              console.error('Failed to delete stale notification:', e);
+            }
+          }
+        } catch (error: any) {
+          // If we can't verify the connection, delete the notification to be safe
+          console.error('Error validating connection request:', error);
+          try {
+            await notificationsAPI.deleteNotification(request.id);
+            console.log(`🗑️ Deleted notification ${request.id} due to validation error`);
+          } catch (e) {
+            console.error('Failed to delete notification:', e);
+          }
+        }
+      }
+      
+      setConnectionRequests(validatedRequests);
     } catch (error: any) {
       console.error('Failed to load connection requests:', error);
     } finally {
@@ -130,8 +190,12 @@ export default function Messages() {
       // Accept the connection
       await connectionsAPI.acceptConnection(connectionId);
       
-      // Delete the notification
-      await notificationsAPI.deleteNotification(notificationId);
+      // Delete the notification (always try to delete even if connection accept had issues)
+      try {
+        await notificationsAPI.deleteNotification(notificationId);
+      } catch (e) {
+        console.error('Failed to delete notification after accepting:', e);
+      }
       
       // Remove from local state
       setConnectionRequests(prev => prev.filter(r => r.id !== notificationId));
@@ -145,11 +209,26 @@ export default function Messages() {
       });
     } catch (error: any) {
       console.error('Failed to accept connection:', error);
-      toast({
-        title: "Failed to accept connection",
-        description: error.message || "Something went wrong. Please try again.",
-        variant: "destructive",
-      });
+      
+      // If connection already processed, delete the notification anyway
+      if (error.message?.includes('already processed') || error.message?.includes('not found')) {
+        try {
+          await notificationsAPI.deleteNotification(notificationId);
+          setConnectionRequests(prev => prev.filter(r => r.id !== notificationId));
+          toast({
+            title: "Connection already processed",
+            description: "This connection request was already handled.",
+          });
+        } catch (e) {
+          console.error('Failed to delete stale notification:', e);
+        }
+      } else {
+        toast({
+          title: "Failed to accept connection",
+          description: error.message || "Something went wrong. Please try again.",
+          variant: "destructive",
+        });
+      }
     } finally {
       setProcessingIds(prev => {
         const next = new Set(prev);
@@ -166,8 +245,12 @@ export default function Messages() {
       // Reject the connection (this deletes it)
       await connectionsAPI.rejectConnection(connectionId);
       
-      // Delete the notification
-      await notificationsAPI.deleteNotification(notificationId);
+      // Delete the notification (always try to delete even if connection reject had issues)
+      try {
+        await notificationsAPI.deleteNotification(notificationId);
+      } catch (e) {
+        console.error('Failed to delete notification after rejecting:', e);
+      }
       
       // Remove from local state
       setConnectionRequests(prev => prev.filter(r => r.id !== notificationId));
@@ -178,11 +261,26 @@ export default function Messages() {
       });
     } catch (error: any) {
       console.error('Failed to reject connection:', error);
-      toast({
-        title: "Failed to reject connection",
-        description: error.message || "Something went wrong. Please try again.",
-        variant: "destructive",
-      });
+      
+      // If connection already processed, delete the notification anyway
+      if (error.message?.includes('already processed') || error.message?.includes('not found')) {
+        try {
+          await notificationsAPI.deleteNotification(notificationId);
+          setConnectionRequests(prev => prev.filter(r => r.id !== notificationId));
+          toast({
+            title: "Connection already processed",
+            description: "This connection request was already handled.",
+          });
+        } catch (e) {
+          console.error('Failed to delete stale notification:', e);
+        }
+      } else {
+        toast({
+          title: "Failed to reject connection",
+          description: error.message || "Something went wrong. Please try again.",
+          variant: "destructive",
+        });
+      }
     } finally {
       setProcessingIds(prev => {
         const next = new Set(prev);
