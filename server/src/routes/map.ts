@@ -84,11 +84,10 @@ router.get('/markers', async (req: Request, res: Response) => {
   try {
     const filters = MapMarkersQuerySchema.parse(req.query);
 
-    // Base query - get active properties with coordinates
+    // Base query - get properties with coordinates
     let query = supabase
       .from('apartment_properties_listings')
       .select('id, name, address, city, state, latitude, longitude, thumbnail_url, property_type, total_units')
-      .eq('is_active', true)
       .not('latitude', 'is', null)
       .not('longitude', 'is', null);
 
@@ -110,31 +109,26 @@ router.get('/markers', async (req: Request, res: Response) => {
       return res.json([]);
     }
 
-    // Enrich properties with unit data
+    // Enrich properties with unit data when available (do not drop properties without units)
     const markers: PropertyMarker[] = [];
 
     for (const prop of properties) {
-      const { data: units, error: unitsError } = await supabase
+      const { data: units } = await supabase
         .from('apartment_units')
         .select('beds, baths, rent_min')
         .eq('property_id', prop.id);
 
-      if (unitsError || !units || units.length === 0) {
-        continue;
-      }
+      const bedsAvailable = units && units.length > 0
+        ? [...new Set(units.map(u => u.beds))].sort((a, b) => a - b)
+        : [];
 
-      // Extract unique bedroom options
-      const bedsAvailable = [...new Set(units.map(u => u.beds))].sort((a, b) => a - b);
-
-      // Find minimum rent
-      const rents = units.map(u => u.rent_min).filter(r => r != null);
+      const rents = (units || []).map(u => u.rent_min).filter(r => r != null);
       const rentMin = rents.length > 0 ? Math.min(...rents) : 0;
 
-      // Calculate average baths
-      const bathsVals = units.map(u => u.baths).filter(b => b != null);
-      const bathsAvg = bathsVals.length > 0 
-        ? bathsVals.reduce((a, b) => a + b, 0) / bathsVals.length 
-        : 1.0;
+      const bathsVals = (units || []).map(u => u.baths).filter(b => b != null);
+      const bathsAvg = bathsVals.length > 0
+        ? bathsVals.reduce((a, b) => a + b, 0) / bathsVals.length
+        : 0;
 
       // Apply rent filters
       if (filters.min_rent && rentMin < filters.min_rent) {
@@ -145,7 +139,7 @@ router.get('/markers', async (req: Request, res: Response) => {
       }
 
       // Apply bedroom filter
-      if (filters.beds !== undefined && !bedsAvailable.includes(filters.beds)) {
+      if (filters.beds !== undefined && bedsAvailable.length > 0 && !bedsAvailable.includes(filters.beds)) {
         continue;
       }
 
@@ -162,14 +156,14 @@ router.get('/markers', async (req: Request, res: Response) => {
         rent_min: rentMin,
         beds_available: bedsAvailable,
         total_units: prop.total_units,
-        baths: Math.round(bathsAvg * 10) / 10,
+        baths: bathsAvg > 0 ? Math.round(bathsAvg * 10) / 10 : 0,
       });
     }
 
     res.json(markers);
   } catch (error) {
     console.error('Error fetching map markers:', error);
-    res.status(500).json({ 
+    res.status(500).json({
       message: 'Error fetching map markers',
       error: error instanceof Error ? error.message : 'Unknown error'
     });
@@ -202,7 +196,7 @@ router.get('/reference-locations', async (req: Request, res: Response) => {
     res.json(data || []);
   } catch (error) {
     console.error('Error fetching reference locations:', error);
-    res.status(500).json({ 
+    res.status(500).json({
       message: 'Error fetching reference locations',
       error: error instanceof Error ? error.message : 'Unknown error'
     });
@@ -285,7 +279,7 @@ router.get('/properties/:id', async (req: Request, res: Response) => {
     });
   } catch (error) {
     console.error('Error fetching property details:', error);
-    res.status(500).json({ 
+    res.status(500).json({
       message: 'Error fetching property details',
       error: error instanceof Error ? error.message : 'Unknown error'
     });
@@ -332,8 +326,8 @@ router.post('/properties-in-bounds', async (req: Request, res: Response) => {
       const rents = units.map(u => u.rent_min).filter(r => r != null);
       const rentMin = rents.length > 0 ? Math.min(...rents) : 0;
       const bathsVals = units.map(u => u.baths).filter(b => b != null);
-      const bathsAvg = bathsVals.length > 0 
-        ? bathsVals.reduce((a, b) => a + b, 0) / bathsVals.length 
+      const bathsAvg = bathsVals.length > 0
+        ? bathsVals.reduce((a, b) => a + b, 0) / bathsVals.length
         : 1.0;
 
       markers.push({
@@ -356,7 +350,7 @@ router.post('/properties-in-bounds', async (req: Request, res: Response) => {
     res.json(markers);
   } catch (error) {
     console.error('Error fetching properties in bounds:', error);
-    res.status(500).json({ 
+    res.status(500).json({
       message: 'Error fetching properties in bounds',
       error: error instanceof Error ? error.message : 'Unknown error'
     });
@@ -392,7 +386,7 @@ router.get('/nearby-properties', async (req: Request, res: Response) => {
     res.json(properties || []);
   } catch (error) {
     console.error('Error fetching nearby properties:', error);
-    res.status(500).json({ 
+    res.status(500).json({
       message: 'Error fetching nearby properties',
       error: error instanceof Error ? error.message : 'Unknown error'
     });

@@ -1,7 +1,10 @@
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Chip } from "@/components/ui/chip";
-import { Bed, Bath, Globe } from "lucide-react";
+import { Bed, Bath, Globe, Heart } from "lucide-react";
+import { useState } from "react";
+import { Link } from "react-router-dom";
+import { favoritesAPI } from "@/lib/api";
 import { useNavigate } from "react-router-dom";
 
 type AnyListing = Record<string, any>;
@@ -86,6 +89,8 @@ function normalizeListing(l: AnyListing) {
 export function PropertyCard({ listing, className = "", onClick }: PropertyCardProps) {
   const navigate = useNavigate();
   const L = normalizeListing(listing);
+  const [isSaving, setIsSaving] = useState(false);
+  const [isSaved, setIsSaved] = useState<boolean>(Boolean((listing as any).isSaved));
 
 
   const handleViewDetails = (e: React.MouseEvent) => {
@@ -93,7 +98,30 @@ export function PropertyCard({ listing, className = "", onClick }: PropertyCardP
     if (L.id) navigate(`/properties/${L.id}`);
   };
 
-  const handleCardClick = () => onClick?.();
+  const handleCardClick = () => {
+    if (onClick) return onClick();
+    if (L.id) navigate(`/properties/${L.id}`);
+  };
+
+  const toggleSave = async (e: React.MouseEvent) => {
+    e.stopPropagation();
+    e.preventDefault();
+    if (!L.id) return;
+    try {
+      setIsSaving(true);
+      if (isSaved) {
+        await favoritesAPI.remove(L.id);
+        setIsSaved(false);
+      } else {
+        await favoritesAPI.save(L.id);
+        setIsSaved(true);
+      }
+    } catch (err) {
+      // no-op UI error handling for now
+    } finally {
+      setIsSaving(false);
+    }
+  };
 
   return (
     <div
@@ -119,8 +147,20 @@ export function PropertyCard({ listing, className = "", onClick }: PropertyCardP
             </div>
           </div>
         )}
+        {/* Save button */}
+        <button
+          type="button"
+          aria-label={isSaved ? "Unsave property" : "Save property"}
+          onClick={toggleSave}
+          onMouseDown={(e) => { e.preventDefault(); }}
+          disabled={isSaving}
+          className="absolute top-3 right-3 z-20 inline-flex items-center justify-center h-9 w-9 rounded-full bg-white/95 hover:bg-white shadow-md border border-surface-3 cursor-pointer"
+        >
+          <Heart className={`h-4 w-4 ${isSaved ? 'fill-red-500 text-red-500' : 'text-foreground'}`} />
+        </button>
+
         {L.intlFriendly && (
-          <Badge variant="accent" className="absolute top-3 right-3 shadow-sm">
+          <Badge variant="accent" className="absolute top-3 left-3 shadow-sm">
             <Globe className="h-3 w-3 mr-1" />
             Intl Friendly
           </Badge>
@@ -161,8 +201,11 @@ export function PropertyCard({ listing, className = "", onClick }: PropertyCardP
           variant="outline"
           className="w-full group-hover:border-accent group-hover:text-accent"
           data-testid="view-details"
+          asChild
         >
-          View Details
+          <Link to={L.id ? `/properties/${L.id}` : '#'} onClick={(e) => { if (!L.id) e.preventDefault(); }}>
+            View Details
+          </Link>
         </Button>
       </div>
     </div>

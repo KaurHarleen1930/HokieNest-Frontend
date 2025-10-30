@@ -1,9 +1,8 @@
 import { defineConfig, loadEnv } from "vite";
 import react from "@vitejs/plugin-react-swc";
 import path from "path";
-import { componentTagger } from "lovable-tagger";
 
-export default defineConfig(({ mode }) => {
+export default defineConfig(async ({ mode }) => {
   // Force-load .env files for this mode
   const env = loadEnv(mode, process.cwd(), "");
 
@@ -12,6 +11,19 @@ export default defineConfig(({ mode }) => {
     VITE_SUPABASE_ANON_KEY: env.VITE_SUPABASE_ANON_KEY?.slice(0, 12) + "...", // partial for sanity
     MODE: mode,
   });
+
+  // Try to load lovable-tagger only in dev, and only if available
+  let taggerPlugin: any = null;
+  if (mode === "development") {
+    try {
+      const mod = await import("lovable-tagger");
+      if (mod?.componentTagger) {
+        taggerPlugin = mod.componentTagger();
+      }
+    } catch (e) {
+      console.warn("[vite] lovable-tagger not available, skipping.", String((e as any)?.message || e));
+    }
+  }
 
   return {
     envPrefix: "VITE_",
@@ -26,7 +38,7 @@ export default defineConfig(({ mode }) => {
         },
       },
     },
-    plugins: [react(), mode === "development" && componentTagger()].filter(Boolean),
+    plugins: [react(), taggerPlugin].filter(Boolean),
     resolve: {
       alias: { "@": path.resolve(__dirname, "./src") },
     },
