@@ -2,6 +2,7 @@ import { Router, Response } from 'express';
 import { NotificationService } from '../services/notification';
 import { authenticateToken, AuthRequest } from '../middleware/auth';
 import { supabase } from '../lib/supabase';
+import { sendRawEmail } from '../utils/email';
 
 const router = Router();
 
@@ -16,6 +17,41 @@ const requireAuth = (req: AuthRequest, res: any) => {
   }
   return true;
 };
+
+/**
+ * Send an email notification (generic)
+ * POST /api/v1/notifications/send-email
+ * Body: { to: string; subject: string; body: string; html?: string }
+ */
+router.post('/send-email', async (req: AuthRequest, res: Response) => {
+  try {
+    if (!requireAuth(req, res)) return;
+
+    const { to, subject, body, html } = req.body || {};
+
+    if (!to || !subject || (!body && !html)) {
+      return res.status(400).json({ error: 'to, subject and body or html are required' });
+    }
+
+    // Prefer provided html, otherwise wrap text body in simple HTML
+    const htmlContent = html ?? `
+      <!DOCTYPE html>
+      <html>
+        <body style="font-family: Arial, sans-serif; line-height: 1.6; color: #333;">
+          <div style="max-width:600px;margin:0 auto;padding:20px;">
+            <p>${String(body).replace(/\n/g, '<br/>')}</p>
+          </div>
+        </body>
+      </html>`;
+
+    await sendRawEmail(to, subject, { html: htmlContent, text: body });
+
+    res.json({ success: true, message: 'Email sent' });
+  } catch (error: any) {
+    console.error('Error sending email:', error);
+    res.status(500).json({ error: error.message || 'Failed to send email' });
+  }
+});
 
 /**
  * Get user notifications (paginated)

@@ -1,5 +1,5 @@
 import { supabase } from '../lib/supabase';
-import { sendVerificationEmail } from '../utils/email';
+import { sendVerificationEmail, sendRawEmail } from '../utils/email';
 import { RealtimeService } from './realtime';
 
 export interface Notification {
@@ -25,6 +25,14 @@ export interface NotificationPreferences {
 }
 
 export class NotificationService {
+  /**
+   * Helper function to get normalized frontend URL (removes trailing slashes)
+   */
+  private static getFrontendUrl(): string {
+    const url = process.env.FRONTEND_URL || 'http://localhost:8080';
+    return url.replace(/\/+$/, ''); // Remove trailing slashes
+  }
+
   /**
    * Create a notification
    * CHANGE: Now broadcasts the notification via RealtimeService after creation
@@ -468,11 +476,11 @@ export class NotificationService {
               <p><strong>${requesterName}</strong> wants to connect with you on HokieNest${compatibilityScore ? ` (${compatibilityScore}% compatibility match)` : ''}!</p>
               <p>Click the button below to view their profile and respond to their request:</p>
               <center>
-                <a href="${process.env.FRONTEND_URL || 'http://localhost:8080'}/messages" class="button">View Connection Request</a>
+                <a href="${NotificationService.getFrontendUrl()}/messages" class="button">View Connection Request</a>
               </center>
               <p>Or copy and paste this link into your browser:</p>
               <p style="word-break: break-all; color: #666;">
-                ${process.env.FRONTEND_URL || 'http://localhost:8080'}/messages
+                ${NotificationService.getFrontendUrl()}/messages
               </p>
             </div>
             <div class="footer">
@@ -483,9 +491,7 @@ export class NotificationService {
       </html>
     `;
 
-    // Note: This would need to be implemented with your email service
-    // For now, we'll just log it
-    console.log(`Would send email to ${user.email}: ${subject}`);
+    await sendRawEmail(user.email, subject, { html, text: `New connection request from ${requesterName}` });
   }
 
   private static async sendMessageEmail(
@@ -547,7 +553,7 @@ export class NotificationService {
               </div>
               <p>Click the button below to view the full conversation:</p>
               <center>
-                <a href="${process.env.FRONTEND_URL || 'http://localhost:8080'}/messages" class="button">View Message</a>
+                <a href="${NotificationService.getFrontendUrl()}/messages" class="button">View Message</a>
               </center>
             </div>
             <div class="footer">
@@ -558,7 +564,8 @@ export class NotificationService {
       </html>
     `;
 
-    console.log(`Would send email to ${user.email}: ${subject}`);
+    const text = `New message from ${senderName}: ${messagePreview}\n\nOpen: ${NotificationService.getFrontendUrl()}/messages`;
+    await sendRawEmail(user.email, subject, { html, text });
   }
 
   private static async sendConnectionAcceptedEmail(
@@ -608,7 +615,7 @@ export class NotificationService {
               <p><strong>${acceptorName}</strong> accepted your connection request!</p>
               <p>You can now start chatting and getting to know each other better.</p>
               <center>
-                <a href="${process.env.FRONTEND_URL || 'http://localhost:8080'}/messages" class="button">Start Chatting</a>
+                <a href="${NotificationService.getFrontendUrl()}/messages" class="button">Start Chatting</a>
               </center>
             </div>
             <div class="footer">
@@ -619,7 +626,8 @@ export class NotificationService {
       </html>
     `;
 
-    console.log(`Would send email to ${user.email}: ${subject}`);
+    const text = `${acceptorName} accepted your connection request. Open Messages: ${NotificationService.getFrontendUrl()}/messages`;
+    await sendRawEmail(user.email, subject, { html, text });
   }
 
   private static async sendMatchFoundEmail(
@@ -676,7 +684,7 @@ export class NotificationService {
               <p><strong>${matchName}</strong> is a <span class="score">${compatibilityScore}%</span> compatibility match based on your preferences.</p>
               <p>Click the button below to view their profile and connect:</p>
               <center>
-                <a href="${process.env.FRONTEND_URL || 'http://localhost:8080'}/roommate-matching" class="button">View Match</a>
+                <a href="${NotificationService.getFrontendUrl()}/roommate-matching" class="button">View Match</a>
               </center>
             </div>
             <div class="footer">
@@ -687,6 +695,7 @@ export class NotificationService {
       </html>
     `;
 
-    console.log(`Would send email to ${user.email}: ${subject}`);
+    const text = `New roommate match found: ${matchName} (${compatibilityScore}%). View: ${NotificationService.getFrontendUrl()}/roommate-matching`;
+    await sendRawEmail(user.email, subject, { html, text });
   }
 }
