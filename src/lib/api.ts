@@ -818,6 +818,19 @@ export const notificationsAPI = {
   getUnreadCount: async (): Promise<{ success: boolean; unreadCount: number }> => {
     return apiRequest<{ success: boolean; unreadCount: number }>(`/notifications/unread-count`);
   },
+
+  // Send an email (generic)
+  sendEmail: async (
+    to: string,
+    subject: string,
+    body: string,
+    html?: string
+  ): Promise<{ success: boolean; message: string }> => {
+    return apiRequest<{ success: boolean; message: string }>(`/notifications/send-email`, {
+      method: 'POST',
+      body: JSON.stringify({ to, subject, body, html }),
+    });
+  },
 };
 
 // Status API

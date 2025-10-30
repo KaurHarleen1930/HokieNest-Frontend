@@ -1,7 +1,7 @@
-import { Link, useNavigate } from "react-router-dom";
+import { Link, useNavigate, useLocation } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { useAuth } from "@/lib/auth";
-import { Home, LogOut, User, Shield, UserCircle, LayoutDashboard, Target, BarChart3, Settings, MessageCircle, Bell } from "lucide-react";
+import { Home, LogOut, User, Shield, UserCircle, LayoutDashboard, Target, BarChart3, Settings, MessageCircle } from "lucide-react";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -11,11 +11,59 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
-import { NotificationBell } from "@/components/notifications/NotificationBell";
+import { Badge } from "@/components/ui/badge";
+import { useEffect, useState } from "react";
+import { chatAPI } from "@/lib/api";
 
 export function Navbar() {
   const { user, logout, isAuthenticated } = useAuth();
   const navigate = useNavigate();
+  const location = useLocation();
+  const [unreadMessageCount, setUnreadMessageCount] = useState(0);
+
+  // Load unread message count
+  useEffect(() => {
+    if (!isAuthenticated) return;
+
+    const loadUnreadCount = async () => {
+      try {
+        // Get all conversations and sum up unread counts
+        const response = await chatAPI.getConversations();
+        const totalUnread = response.conversations.reduce((sum: number, conv: any) => {
+          return sum + (conv.unread_count || 0);
+        }, 0);
+        setUnreadMessageCount(totalUnread);
+      } catch (error) {
+        console.error('Failed to load unread message count:', error);
+      }
+    };
+
+    loadUnreadCount();
+
+    // Poll for updates every 30 seconds
+    const interval = setInterval(loadUnreadCount, 30000);
+    return () => clearInterval(interval);
+  }, [isAuthenticated]);
+
+  // Clear badge when messages page is visited
+  useEffect(() => {
+    if (location.pathname === '/messages') {
+      // Mark all conversations as read when visiting messages page
+      const markAllRead = async () => {
+        try {
+          const response = await chatAPI.getConversations();
+          const unreadConvs = response.conversations.filter((conv: any) => conv.unread_count > 0);
+          if (unreadConvs.length > 0) {
+            await Promise.all(unreadConvs.map((conv: any) => chatAPI.markConversationAsRead(conv.id)));
+            setUnreadMessageCount(0);
+          }
+        } catch (error) {
+          console.error('Failed to mark conversations as read:', error);
+        }
+      };
+      markAllRead();
+    }
+  }, [location.pathname]);
 
   const handleLogout = async () => {
     await logout();
@@ -61,16 +109,17 @@ export function Navbar() {
         </Link>
         <Link
           to="/messages"
-          className="text-foreground hover:text-accent transition-colors font-medium"
+          className="text-foreground hover:text-accent transition-colors font-medium relative"
         >
           Messages
-        </Link>
-        {/* CHANGE: Added Notifications link to navbar */}
-        <Link
-          to="/notifications"
-          className="text-foreground hover:text-accent transition-colors font-medium"
-        >
-          Notifications
+          {unreadMessageCount > 0 && (
+            <Badge 
+              variant="destructive" 
+              className="absolute -top-2 -right-2 h-5 w-5 rounded-full p-0 flex items-center justify-center text-xs pointer-events-none"
+            >
+              {unreadMessageCount > 99 ? '99+' : unreadMessageCount}
+            </Badge>
+          )}
         </Link>
               <Link
                 to="/dashboard"
@@ -86,7 +135,6 @@ export function Navbar() {
         <div className="flex items-center gap-3">
           {isAuthenticated ? (
             <>
-              <NotificationBell />
               <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <Button variant="ghost" className="flex items-center gap-2">
@@ -121,11 +169,14 @@ export function Navbar() {
         <DropdownMenuItem onClick={() => navigate('/messages')}>
           <MessageCircle className="h-4 w-4 mr-2" />
           Messages
-        </DropdownMenuItem>
-        {/* CHANGE: Added Notifications to dropdown menu */}
-        <DropdownMenuItem onClick={() => navigate('/notifications')}>
-          <Bell className="h-4 w-4 mr-2" />
-          Notifications
+          {unreadMessageCount > 0 && (
+            <Badge 
+              variant="destructive" 
+              className="ml-auto h-5 w-5 rounded-full p-0 flex items-center justify-center text-xs"
+            >
+              {unreadMessageCount > 99 ? '99+' : unreadMessageCount}
+            </Badge>
+          )}
         </DropdownMenuItem>
         <DropdownMenuItem onClick={() => navigate('/roommate-questionnaire')}>
           <Target className="h-4 w-4 mr-2" />
