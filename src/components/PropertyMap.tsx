@@ -1,6 +1,6 @@
 // src/components/PropertyMap.tsx
 import React, { useEffect, useRef, useState } from 'react';
-import L from 'leaflet';
+import * as L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import 'leaflet.heat';
 
@@ -23,7 +23,7 @@ L.Icon.Default.mergeOptions({
   shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/images/marker-shadow.png',
 });
 
-// --- VT Campus locations (DC area only) ---
+// --- VT Campus locations (Blacksburg) ---
 const VT_CAMPUSES = [
   {
     name: 'VT Research Center – Arlington',
@@ -31,20 +31,6 @@ const VT_CAMPUSES = [
     lng: -77.111517,
     id: 'arlington',
     radius: 2500,
-  },
-  {
-    name: 'Washington–Alexandria Architecture Center',
-    lat: 38.806012,
-    lng: -77.050518,
-    id: 'alexandria',
-    radius: 2500,
-  },
-  {
-    name: 'Academic Building One (Northern VA)',
-    lat: 38.947211,
-    lng: -77.336989,
-    id: 'academic',
-    radius: 3000,
   },
 ];
 
@@ -140,6 +126,18 @@ export const PropertyMap: React.FC<PropertyMapProps> = ({
     // add default base layer
     activeBaseLayerRef.current = mapLayers.streets.addTo(map);
 
+    // Create panes for layering
+    if (!map.getPane('vtPane')) {
+      map.createPane('vtPane');
+      const pane = map.getPane('vtPane');
+      if (pane) (pane.style as any).zIndex = '700';
+    }
+    if (!map.getPane('refPane')) {
+      map.createPane('refPane');
+      const pane = map.getPane('refPane');
+      if (pane) (pane.style as any).zIndex = '650';
+    }
+
     // track bbox for safety queries
     const b0 = map.getBounds();
     setBbox([b0.getWest(), b0.getSouth(), b0.getEast(), b0.getNorth()]);
@@ -160,18 +158,50 @@ export const PropertyMap: React.FC<PropertyMapProps> = ({
   useEffect(() => {
     const fetchMapData = async () => {
       try {
-        const [propertiesData, referenceData] = await Promise.all([
-          mapAPI.getMapMarkers(filters),
-          mapAPI.getReferenceLocations(),
-        ]);
-        setMapProperties(propertiesData);
-        setReferenceLocations(referenceData);
+        // If caller passed properties, use them and skip backend markers call
+        if (Array.isArray(properties) && properties.length > 0) {
+          setMapProperties(properties as any);
+        } else {
+          // fetch markers with a light retry; if it fails, leave mapProperties empty
+          let propsData: any[] = [];
+          let ok = false;
+          for (let attempt = 0; attempt < 2; attempt++) {
+            try {
+              propsData = await mapAPI.getMapMarkers(filters);
+              ok = true;
+              break;
+            } catch (e) {
+              await new Promise(r => setTimeout(r, 400));
+            }
+          }
+          if (ok && Array.isArray(propsData)) {
+            setMapProperties(propsData);
+          } else {
+            console.warn('[PropertyMap] Skipping markers due to fetch failure; falling back to passed properties');
+            setMapProperties(Array.isArray(properties) ? (properties as any) : []);
+          }
+        }
+
+        // fetch refs with a light retry (handles cold server or transient empty)
+        let refs: any[] = [];
+        for (let attempt = 0; attempt < 2; attempt++) {
+          try {
+            const r = await mapAPI.getReferenceLocations();
+            if (Array.isArray(r)) refs = r;
+            if (refs.length > 0) break;
+          } catch (e) {
+            // ignore to retry
+          }
+          await new Promise(r => setTimeout(r, 500));
+        }
+        setReferenceLocations(refs);
+        console.info(`[PropertyMap] fetched refs: ${Array.isArray(refs) ? refs.length : 0}`);
       } catch (error) {
         console.error('PropertyMap: Error fetching map data:', error);
       }
     };
     fetchMapData();
-  }, [filters]);
+  }, [filters, properties]);
 
   // --- Add VT campus markers ---
   const addVTCampusMarkers = (map: L.Map) => {
@@ -181,12 +211,12 @@ export const PropertyMap: React.FC<PropertyMapProps> = ({
         html: `
           <div style="
             background:#E87722;border:2px solid white;border-radius:50%;
-            width:32px;height:32px;display:flex;align-items:center;justify-content:center;
-            font-weight:bold;color:white;font-size:10px;box-shadow:0 2px 4px rgba(0,0,0,0.3);
+            width:28px;height:28px;display:flex;align-items:center;justify-content:center;
+            color:white;font-size:10px;font-weight:700;box-shadow:0 2px 4px rgba(0,0,0,0.3);
           ">VT</div>
         `,
-        iconSize: [32, 32],
-        iconAnchor: [16, 16],
+        iconSize: [28, 28],
+        iconAnchor: [14, 14],
       });
 
       const marker = L.marker([campus.lat, campus.lng], { icon: vtIcon })
@@ -205,38 +235,57 @@ export const PropertyMap: React.FC<PropertyMapProps> = ({
   const addReferenceLocationMarkers = (map: L.Map) => {
     referenceLocations.forEach((location) => {
       const getIcon = (type: string) => {
-        const color =
-          type === 'university' ? '#3B82F6' : type === 'transit' ? '#10B981' : '#8B5CF6';
-        return L.divIcon({
-          className: 'custom-reference-marker',
-          html: `
+        const name = String(location.name || '').trim().toLowerCase();
+        const isVT = name.includes('virginia tech') || name.startsWith('vt ') || [
+          'virginia tech alexandria center',
+          'virginia tech arlington center',
+          'virginia tech innovation campus',
+          'vt research center',
+          'washington–alexandria architecture center',
+          'washington-alexandria architecture center',
+        ].includes(name);
+        const color = isVT ? '#E87722' : (type === 'university' ? '#3B82F6' : type === 'transit' ? '#10B981' : '#8B5CF6');
+        return {
+          isVT, icon: L.divIcon({
+            className: 'custom-reference-marker',
+            html: `
             <div style="
               background:${color};border:2px solid white;border-radius:50%;
               width:24px;height:24px;display:flex;align-items:center;justify-content:center;
               color:white;font-size:10px;box-shadow:0 2px 4px rgba(0,0,0,0.3);
             ">
-              ${type === 'university' ? 'U' : type === 'transit' ? 'T' : 'E'}
+              ${isVT ? 'VT' : (type === 'university' ? 'U' : type === 'transit' ? 'T' : 'E')}
             </div>
           `,
-          iconSize: [24, 24],
-          iconAnchor: [12, 12],
-        });
+            iconSize: [24, 24],
+            iconAnchor: [12, 12],
+          })
+        };
       };
 
-      const marker = L.marker([location.latitude, location.longitude], {
-        icon: getIcon(location.type),
+      const lat = Number((location as any).latitude);
+      const lng = Number((location as any).longitude);
+      if (!isFinite(lat) || !isFinite(lng)) return;
+      const iconData = getIcon((location as any).type);
+      // Exclude VT campuses from references; they are rendered separately via VT pins
+      if (iconData.isVT) return;
+      const marker = L.marker([lat, lng], {
+        icon: iconData.icon,
+        pane: 'refPane' as any,
+        zIndexOffset: 800,
       })
         .addTo(map)
         .bindPopup(`
           <div class="p-2">
             <h3 class="font-bold">${location.name}</h3>
-            <p class="text-sm text-gray-600">${location.type}</p>
+            <p class="text-sm text-gray-600">${location.type || 'reference'}</p>
             ${location.address ? `<p class="text-xs text-gray-500">${location.address}</p>` : ''}
           </div>
         `);
 
       referenceMarkersRef.current.push(marker);
     });
+    console.info(`[PropertyMap] Plotted references: ${referenceMarkersRef.current.length}`);
   };
 
   // --- Create/refresh property markers ---
@@ -253,7 +302,43 @@ export const PropertyMap: React.FC<PropertyMapProps> = ({
 
     const isDetailPage = propertiesToShow.length === 1;
 
-    propertiesToShow.forEach((property) => {
+    // Campus distance filter (~5 miles) if a campus is selected
+    const campusFilter: any = (filters as any)?.campus ?? selectedCampus ?? null;
+    const normalizeCampus = (v: any): 'innovation' | 'alexandria' | 'research' | null => {
+      if (!v || v === 'All Campuses') return null;
+      const s = String(v).toLowerCase().replace(/\u2013|\u2014|–|—/g, '-'); // normalize dashes
+      if (s.includes('innovation') || s.includes('academic building one') || s.includes('ab1') || s === 'innovation') return 'innovation';
+      if (s.includes('alexandria') || s.includes('architecture') || s === 'alexandria') return 'alexandria';
+      if (s.includes('research') || s.includes('arlington') || s === 'research') return 'research';
+      return null;
+    };
+    const key = normalizeCampus(campusFilter);
+    const CENTERS: Record<'innovation' | 'alexandria' | 'research', { lat: number; lng: number }> = {
+      innovation: { lat: 38.8539, lng: -77.0503 },
+      alexandria: { lat: 38.8051, lng: -77.0470 },
+      research: { lat: 38.8869, lng: -77.1022 },
+    };
+    const R = 3958.8; // miles
+    const distMiles = (aLat: number, aLng: number, bLat: number, bLng: number) => {
+      const toRad = (d: number) => d * Math.PI / 180;
+      const dLat = toRad(bLat - aLat);
+      const dLng = toRad(bLng - aLng);
+      const s = Math.sin(dLat / 2) ** 2 + Math.cos(toRad(aLat)) * Math.cos(toRad(bLat)) * Math.sin(dLng / 2) ** 2;
+      return 2 * R * Math.asin(Math.min(1, Math.sqrt(s)));
+    };
+    const radiusMiles = 2;
+
+    const filteredProps = key ? propertiesToShow.filter(p => {
+      const c = CENTERS[key];
+      const lat = Number((p as any).latitude);
+      const lng = Number((p as any).longitude);
+      if (!isFinite(lat) || !isFinite(lng)) return false;
+      return distMiles(c.lat, c.lng, lat, lng) <= radiusMiles;
+    }) : propertiesToShow;
+
+    if (key) console.info(`[PropertyMap] Campus=${key}, radius=${radiusMiles}mi, results=${filteredProps.length}`);
+
+    filteredProps.forEach((property) => {
       if (!property.latitude || !property.longitude) return;
 
       const isSelected = selectedProperty?.id === property.id;
@@ -311,11 +396,11 @@ export const PropertyMap: React.FC<PropertyMapProps> = ({
               </span>
             </div>
             ${(property as any).distanceFromCampus
-              ? `<div class="text-xs text-gray-600 mb-2">📍 ${(property as any).distanceFromCampus} miles from ${(property as any).nearestCampus?.name || 'VT Campus'}</div>`
-              : ''
-            }
+            ? `<div class="text-xs text-gray-600 mb-2">📍 ${(property as any).distanceFromCampus} miles from ${(property as any).nearestCampus?.name || 'VT Campus'}</div>`
+            : ''
+          }
             <button
-              onclick="selectProperty('${property.id}')"
+              onclick="viewProperty('${property.id}')"
               class="w-full bg-orange-500 text-white px-3 py-2 rounded text-sm hover:bg-orange-600 transition-colors"
             >
               View Details
@@ -337,9 +422,9 @@ export const PropertyMap: React.FC<PropertyMapProps> = ({
     });
 
     // fit bounds logic
-    if (propertiesToShow.length > 0 && propertiesToShow.some((p) => p.latitude && p.longitude)) {
+    if (filteredProps.length > 0 && filteredProps.some((p) => p.latitude && p.longitude)) {
       if (isDetailPage) {
-        const property = propertiesToShow[0];
+        const property = filteredProps[0];
         map.setView([property.latitude!, property.longitude!], 16);
         setTimeout(() => {
           if (mapInstanceRef.current) {
@@ -352,12 +437,20 @@ export const PropertyMap: React.FC<PropertyMapProps> = ({
       }
     }
 
-    // global helper for popup button
+    // global helper for popup buttons
     (window as any).selectProperty = (propertyId: string) => {
-      const property = propertiesToShow.find((p) => p.id === propertyId);
+      const property = filteredProps.find((p) => p.id === propertyId);
       if (property && onPropertySelect) onPropertySelect(property as any);
     };
-  }, [mapProperties, properties, selectedProperty, isLoaded, onPropertySelect]);
+    (window as any).viewProperty = (propertyId: string) => {
+      // navigate to details route; fallback to selection if id missing
+      if (propertyId) {
+        window.location.href = `/properties/${propertyId}`;
+      } else {
+        (window as any).selectProperty?.(propertyId);
+      }
+    };
+  }, [mapProperties, properties, selectedProperty, isLoaded, onPropertySelect, filters, selectedCampus]);
 
   // --- Detail page re-center safeguard ---
   useEffect(() => {
@@ -401,16 +494,103 @@ export const PropertyMap: React.FC<PropertyMapProps> = ({
     if (showVTMarkers) addVTCampusMarkers(map);
   }, [showVTMarkers, isLoaded]);
 
+  // --- Render VT reference locations in orange; controlled by VT toggle and Campus filter ---
+  useEffect(() => {
+    const map = mapInstanceRef.current;
+    if (!map || !isLoaded) return;
+    if (!showVTMarkers) return;
+
+    // Ensure VT pane exists (avoids appendChild on undefined)
+    if (!map.getPane('vtPane')) {
+      map.createPane('vtPane');
+      const pane = map.getPane('vtPane');
+      if (pane) (pane.style as any).zIndex = '700';
+    }
+
+    // Remove previously added VT ref markers
+    vtMarkersRef.current.forEach((m) => map.removeLayer(m));
+    vtMarkersRef.current = [];
+
+    const vtIcon = L.divIcon({
+      className: 'custom-vt-marker',
+      html: `
+        <div style="
+          background:#E87722;border:2px solid white;border-radius:50%;
+          width:28px;height:28px;display:flex;align-items:center;justify-content:center;
+          color:white;font-size:10px;font-weight:700;box-shadow:0 2px 4px rgba(0,0,0,0.3);
+        ">VT</div>
+      `,
+      iconSize: [28, 28],
+      iconAnchor: [14, 14],
+    });
+
+    // HARD-CODED VT POINTS (bypass API)
+    const vtPoints: Array<{ key: 'innovation' | 'alexandria' | 'research'; name: string; lat: number; lng: number; address?: string }> = [
+      { key: 'innovation', name: 'Academic Building One (Northern VA)', lat: 38.8539, lng: -77.0503 },
+      { key: 'alexandria', name: 'Washington–Alexandria Architecture Center', lat: 38.8051, lng: -77.0470, address: '1021 Prince St, Alexandria, VA' },
+      { key: 'research', name: 'VT Research Center – Arlington', lat: 38.8869, lng: -77.1022, address: '900 N Glebe Rd, Arlington, VA' },
+    ];
+
+    const campusFilter: any = (filters as any)?.campus ?? selectedCampus ?? null;
+    const normalizeCampus = (v: any): 'innovation' | 'alexandria' | 'research' | null => {
+      if (!v || v === 'All Campuses') return null;
+      const s = String(v).toLowerCase();
+      if (s.includes('academic') || s.includes('innovation')) return 'innovation';
+      if (s.includes('alexandria') || s.includes('architecture')) return 'alexandria';
+      if (s.includes('research') || s.includes('arlington')) return 'research';
+      return null;
+    };
+    const selectedKey = normalizeCampus(campusFilter);
+
+    vtPoints
+      .filter(p => !selectedKey || p.key === selectedKey)
+      .forEach((p) => {
+        const marker = L.marker([p.lat, p.lng], { icon: vtIcon, pane: 'vtPane' as any, zIndexOffset: 1000 })
+          .addTo(map)
+          .bindPopup(`
+            <div class="p-2">
+              <h3 class="font-bold text-orange-600">${p.name}</h3>
+              ${p.address ? `<p class="text-xs text-gray-600">${p.address}</p>` : ''}
+            </div>
+          `);
+        vtMarkersRef.current.push(marker);
+      });
+  }, [referenceLocations, isLoaded, showVTMarkers, filters, selectedCampus]);
+
   // --- Toggle reference markers ---
   useEffect(() => {
     const map = mapInstanceRef.current;
     if (!map || !isLoaded) return;
 
+    console.info(`[PropertyMap] Ref toggle: ${showReferenceMarkers}, refs in state=${referenceLocations.length}`);
+
+    // remove markers we created and any lingering reference markers on the map
     referenceMarkersRef.current.forEach((m) => map.removeLayer(m));
     referenceMarkersRef.current = [];
-    if (showReferenceMarkers && referenceLocations.length > 0) {
-      addReferenceLocationMarkers(map);
-    }
+    map.eachLayer((layer: any) => {
+      if (layer instanceof (L as any).Marker && layer._icon?.className?.includes('custom-reference-marker')) {
+        map.removeLayer(layer);
+      }
+    });
+
+    const ensureAndDraw = async () => {
+      let refs = referenceLocations;
+      if (showReferenceMarkers && refs.length === 0) {
+        try {
+          refs = await mapAPI.getReferenceLocations();
+          setReferenceLocations(refs);
+          console.info(`[PropertyMap] re-fetched refs on toggle: ${refs.length}`);
+        } catch (e) {
+          console.error('PropertyMap: failed to fetch refs on toggle', e);
+          refs = [];
+        }
+      }
+      if (showReferenceMarkers && refs.length > 0) {
+        addReferenceLocationMarkers(map);
+      }
+    };
+
+    ensureAndDraw();
   }, [showReferenceMarkers, referenceLocations, isLoaded]);
 
   // --- Safety overlay render/update ---
@@ -477,11 +657,10 @@ export const PropertyMap: React.FC<PropertyMapProps> = ({
               <div style="min-width:180px">
                 <div style="font-weight:600">${f.properties?.type ?? 'Incident'}</div>
                 <div style="font-size:12px;color:#555">${new Date(f.properties?.occurred_at).toLocaleString()}</div>
-                ${
-                  f.properties?.details?.BLOCK
-                    ? `<div style="font-size:12px;margin-top:4px">${f.properties.details.BLOCK}</div>`
-                    : ''
-                }
+                ${f.properties?.details?.BLOCK
+                ? `<div style="font-size:12px;margin-top:4px">${f.properties.details.BLOCK}</div>`
+                : ''
+              }
                 ${f.properties?.source ? `<div style="font-size:11px;color:#777;margin-top:4px">Source: ${f.properties.source}</div>` : ''}
               </div>
             `)
@@ -535,17 +714,15 @@ export const PropertyMap: React.FC<PropertyMapProps> = ({
               <span className="text-xs font-medium text-gray-700">Layers:</span>
               <button
                 onClick={() => setCurrentLayer('streets')}
-                className={`px-2 py-1 text-xs rounded transition-colors ${
-                  currentLayer === 'streets' ? 'bg-orange-500 text-white' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-                }`}
+                className={`px-2 py-1 text-xs rounded transition-colors ${currentLayer === 'streets' ? 'bg-orange-500 text-white' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                  }`}
               >
                 Streets
               </button>
               <button
                 onClick={() => setCurrentLayer('transit')}
-                className={`px-2 py-1 text-xs rounded transition-colors ${
-                  currentLayer === 'transit' ? 'bg-orange-500 text-white' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-                }`}
+                className={`px-2 py-1 text-xs rounded transition-colors ${currentLayer === 'transit' ? 'bg-orange-500 text-white' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                  }`}
               >
                 Transit
               </button>
@@ -579,9 +756,8 @@ export const PropertyMap: React.FC<PropertyMapProps> = ({
               <span className="text-xs font-medium text-gray-700">VT:</span>
               <button
                 onClick={() => setShowVTMarkers((v) => !v)}
-                className={`px-2 py-1 text-xs rounded transition-colors ${
-                  showVTMarkers ? 'bg-purple-500 text-white' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-                }`}
+                className={`px-2 py-1 text-xs rounded transition-colors ${showVTMarkers ? 'bg-purple-500 text-white' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                  }`}
               >
                 {showVTMarkers ? 'Hide' : 'Show'}
               </button>
@@ -590,9 +766,8 @@ export const PropertyMap: React.FC<PropertyMapProps> = ({
               <span className="text-xs font-medium text-gray-700">Ref:</span>
               <button
                 onClick={() => setShowReferenceMarkers((v) => !v)}
-                className={`px-2 py-1 text-xs rounded transition-colors ${
-                  showReferenceMarkers ? 'bg-green-500 text-white' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-                }`}
+                className={`px-2 py-1 text-xs rounded transition-colors ${showReferenceMarkers ? 'bg-green-500 text-white' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                  }`}
               >
                 {showReferenceMarkers ? 'Hide' : 'Show'}
               </button>
@@ -627,17 +802,17 @@ export const PropertyMap: React.FC<PropertyMapProps> = ({
         </div>
       </div>
 
-{/* Safety Controls */}
-<div className="absolute bottom-4 left-4 z-[120] pointer-events-auto">
-  <SafetyControls
-    enabled={safetyOn}
-    onToggle={setSafetyOn}
-    preset={preset}
-    onPresetChange={setPreset}
-    mode={safetyMode === 'heat' ? 'heat' : 'clusters'}
-    onModeChange={(m) => setSafetyMode(m === 'heat' ? 'heat' : 'points')}
-  />
-</div>
+      {/* Safety Controls */}
+      <div className="absolute bottom-4 left-4 z-[120] pointer-events-auto">
+        <SafetyControls
+          enabled={safetyOn}
+          onToggle={setSafetyOn}
+          preset={preset}
+          onPresetChange={setPreset}
+          mode={safetyMode === 'heat' ? 'heat' : 'clusters'}
+          onModeChange={(m) => setSafetyMode(m === 'heat' ? 'heat' : 'points')}
+        />
+      </div>
 
 
       {/* Badges (counts) */}

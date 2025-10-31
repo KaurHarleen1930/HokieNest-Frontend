@@ -46,6 +46,7 @@ export function LeafletMap({
   const [isLoaded, setIsLoaded] = useState(false);
   const [mapProperties, setMapProperties] = useState<PropertyMarker[]>([]);
   const [loading, setLoading] = useState(true);
+  const [referenceLocations, setReferenceLocations] = useState<any[]>([]);
   const [currentLayer, setCurrentLayer] = useState<'streets' | 'satellite' | 'transit'>('streets');
   const [showVTMarkers, setShowVTMarkers] = useState(true);
 
@@ -67,15 +68,8 @@ export function LeafletMap({
     setShowVTMarkers(!showVTMarkers);
   };
 
-  // VT Campus locations (DC area only)
-  const VT_CAMPUSES = [
-    { name: 'VT Innovation Campus (Alexandria)', lat: 38.8051, lng: -77.0470 },
-    { name: 'VT Arlington Research Center', lat: 38.8816, lng: -77.1025 },
-    { name: 'VT Falls Church Campus', lat: 38.8842, lng: -77.1714 }
-  ];
-
-  // Center point for DC area campuses
-  const MAP_CENTER = [38.85, -77.1] as [number, number];
+  // Center map on Northern Virginia area by default (covers Alexandria/Arlington)
+  const MAP_CENTER = [38.86, -77.09] as [number, number];
 
   // Map layers
   const mapLayers = {
@@ -93,13 +87,39 @@ export function LeafletMap({
     })
   };
 
+  // VT name matching helpers
+  const VT_NAME_ALIASES = [
+    'virginia tech alexandria center',
+    'virginia tech arlington center',
+    'virginia tech innovation campus',
+    'vt research center',
+    'washington–alexandria architecture center',
+    'washington-alexandria architecture center'
+  ];
+  const VT_IDS = new Set([
+    '208f6138-4c8f-4742-b6da-844efb823cc1',
+    '7e460e19-dd14-4a28-b6b5-4376f9c79332',
+    'c7c57b44-151a-4428-90ee-ba0d3d33d2ad',
+    '443a938e-5755-4add-8a8e-e0b2b4b0c45a',
+  ]);
+  const isVTLocation = (n?: string) => {
+    const name = String(n || '').trim().toLowerCase();
+    if (!name) return false;
+    if (name.includes('virginia tech') || name.startsWith('vt ')) return true;
+    return VT_NAME_ALIASES.includes(name);
+  };
+
   // Fetch map data
   useEffect(() => {
     const fetchMapData = async () => {
       try {
         setLoading(true);
-        const data = await mapAPI.getMapMarkers(filters);
-        setMapProperties(data);
+        const [propsData, refs] = await Promise.all([
+          mapAPI.getMapMarkers(filters),
+          mapAPI.getReferenceLocations(),
+        ]);
+        setMapProperties(propsData);
+        setReferenceLocations(refs || []);
       } catch (error) {
         console.error('Error fetching map data:', error);
       } finally {
@@ -113,11 +133,11 @@ export function LeafletMap({
 
   useEffect(() => {
     console.log('LeafletMap: Map init useEffect running, mapRef.current:', mapRef.current);
-    
+
     // Add a small delay to ensure DOM is ready
     let retryCount = 0;
     const maxRetries = 50; // 5 seconds max
-    
+
     const initMap = () => {
       if (!mapRef.current) {
         retryCount++;
@@ -138,6 +158,12 @@ export function LeafletMap({
 
       // Create map
       const map = L.map(mapRef.current).setView(MAP_CENTER, 11);
+      // Pane to render VT markers above property pins
+      if (!map.getPane('vtPane')) {
+        map.createPane('vtPane');
+        const pane = map.getPane('vtPane')!;
+        (pane.style as any).zIndex = '700';
+      }
 
       // Add default layer (streets)
       mapLayers.streets.addTo(map);
@@ -146,44 +172,7 @@ export function LeafletMap({
       setIsLoaded(true);
       console.log('LeafletMap: Map loaded successfully');
 
-      // Add VT campus markers with custom icons (only if showVTMarkers is true)
-      if (showVTMarkers) {
-        VT_CAMPUSES.forEach(campus => {
-          const vtIcon = L.divIcon({
-            className: 'custom-vt-marker',
-            html: `
-              <div style="
-                background: #E87722;
-                border: 2px solid white;
-                border-radius: 50%;
-                width: 32px;
-                height: 32px;
-                display: flex;
-                align-items: center;
-                justify-content: center;
-                font-weight: bold;
-                color: white;
-                font-size: 10px;
-                box-shadow: 0 2px 4px rgba(0,0,0,0.3);
-              ">
-                VT
-              </div>
-            `,
-            iconSize: [32, 32],
-            iconAnchor: [16, 16],
-          });
-
-          L.marker([campus.lat, campus.lng], { icon: vtIcon })
-            .addTo(map)
-            .bindPopup(`
-              <div style="text-align: center;">
-                <strong style="color: #E87722;">${campus.name}</strong>
-                <br>
-                <small>Virginia Tech Campus</small>
-              </div>
-            `);
-        });
-      }
+      // Initial VT markers will be added by the reactive effect below
     };
 
     initMap();
@@ -213,7 +202,7 @@ export function LeafletMap({
     propertiesToShow.forEach((property, index) => {
       if (property.latitude && property.longitude) {
         const isSelected = selectedProperty?.id === property.id;
-        
+
         // Handle both PropertyMarker and Listing types
         const title = (property as any).name || (property as any).title || 'Property';
         const address = property.address;
@@ -221,7 +210,7 @@ export function LeafletMap({
         const beds = (property as any).beds || (property as any).unit_beds || 0;
         const baths = (property as any).baths || (property as any).unit_baths || 0;
         const intlFriendly = (property as any).intlFriendly || false;
-        
+
         // Create custom property icon
         const propertyIcon = L.divIcon({
           className: 'custom-property-marker',
@@ -259,14 +248,14 @@ export function LeafletMap({
                 ${address}
               </p>
               <div style="display: flex; gap: 8px; margin-bottom: 8px;">
-                ${price && price > 0 ? 
-                  `<span style="background: #E87722; color: white; padding: 2px 6px; border-radius: 4px; font-size: 11px; font-weight: bold;">
+                ${price && price > 0 ?
+              `<span style="background: #E87722; color: white; padding: 2px 6px; border-radius: 4px; font-size: 11px; font-weight: bold;">
                     $${Number(price).toLocaleString()}/mo
-                  </span>` : 
-                  `<span style="background: #6B7280; color: white; padding: 2px 6px; border-radius: 4px; font-size: 11px; font-weight: bold;">
+                  </span>` :
+              `<span style="background: #6B7280; color: white; padding: 2px 6px; border-radius: 4px; font-size: 11px; font-weight: bold;">
                     Call for pricing
                   </span>`
-                }
+            }
                 <span style="background: #3B82F6; color: white; padding: 2px 6px; border-radius: 4px; font-size: 11px;">
                   ${beds} bed${beds !== 1 ? 's' : ''}
                 </span>
@@ -274,13 +263,13 @@ export function LeafletMap({
                   ${baths} bath${baths !== 1 ? 's' : ''}
                 </span>
               </div>
-              ${intlFriendly ? 
-                `<div style="margin-top: 8px;">
+              ${intlFriendly ?
+              `<div style="margin-top: 8px;">
                   <span style="background: #8B5CF6; color: white; padding: 2px 6px; border-radius: 4px; font-size: 11px;">
                     🌍 International Friendly
                   </span>
                 </div>` : ''
-              }
+            }
               <button onclick="window.selectProperty('${property.id}')" 
                 style="
                   background: #E87722; 
@@ -337,7 +326,7 @@ export function LeafletMap({
     if (!mapInstanceRef.current || !isLoaded) return;
 
     const map = mapInstanceRef.current;
-    
+
     // Remove all layers
     Object.values(mapLayers).forEach(layer => {
       map.removeLayer(layer);
@@ -356,12 +345,11 @@ export function LeafletMap({
     }
   }, [currentLayer, isLoaded]);
 
-  // Handle VT markers toggle
+  // Handle VT markers toggle and reference location updates
   useEffect(() => {
     if (!mapInstanceRef.current || !isLoaded) return;
-
     const map = mapInstanceRef.current;
-    
+
     // Remove existing VT markers
     map.eachLayer((layer) => {
       if (layer instanceof L.Marker && (layer as any)._icon?.className?.includes('custom-vt-marker')) {
@@ -369,55 +357,73 @@ export function LeafletMap({
       }
     });
 
-    // Add VT markers if showVTMarkers is true
-    if (showVTMarkers) {
-      VT_CAMPUSES.forEach(campus => {
-        const vtIcon = L.divIcon({
-          className: 'custom-vt-marker',
-          html: `
-            <div style="
-              background: #E87722;
-              border: 2px solid white;
-              border-radius: 50%;
-              width: 32px;
-              height: 32px;
-              display: flex;
-              align-items: center;
-              justify-content: center;
-              font-weight: bold;
-              color: white;
-              font-size: 10px;
-              box-shadow: 0 2px 4px rgba(0,0,0,0.3);
-            ">
-              VT
-            </div>
-          `,
-          iconSize: [32, 32],
-          iconAnchor: [16, 16],
-        });
+    if (!showVTMarkers || referenceLocations.length === 0) return;
 
-        L.marker([campus.lat, campus.lng], { icon: vtIcon })
-          .addTo(map)
-          .bindPopup(`
-            <div style="text-align: center;">
-              <strong style="color: #E87722;">${campus.name}</strong>
-              <br>
-              <small>Virginia Tech Campus</small>
-            </div>
-          `);
-      });
+    const vtIcon = L.divIcon({
+      className: 'custom-vt-marker',
+      html: `
+        <div style="
+          background: #E87722;
+          border: 2px solid white;
+          border-radius: 50%;
+          width: 36px;
+          height: 36px;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          font-weight: bold;
+          color: white;
+          font-size: 10px;
+          box-shadow: 0 2px 4px rgba(0,0,0,0.3);
+        ">VT</div>
+      `,
+      iconSize: [36, 36],
+      iconAnchor: [18, 18],
+    });
+
+    const ARLINGTON_ID = '7e460e19-dd14-4a28-b6b5-4376f9c79332';
+    const RESEARCH_ID = '443a938e-5755-4add-8a8e-e0b2b4b0c45a';
+    const INNOVATION_ID = 'c7c57b44-151a-4428-90ee-ba0d3d33d2ad';
+    const ALEX_ID = '208f6138-4c8f-4742-b6da-844efb823cc1';
+
+    const byId: Record<string, any> = {};
+    referenceLocations.forEach((loc: any) => { byId[String(loc.id)] = loc; });
+
+    const merged: Array<{ name: string; lat: number; lng: number; address?: string }> = [];
+    [INNOVATION_ID, ALEX_ID].forEach((id) => {
+      const loc = byId[id];
+      if (loc) {
+        const lat = Number(loc.latitude); const lng = Number(loc.longitude);
+        if (isFinite(lat) && isFinite(lng)) merged.push({ name: String(loc.name), lat, lng, address: loc.address });
+      }
+    });
+    const rc = byId[RESEARCH_ID];
+    const arl = byId[ARLINGTON_ID];
+    const chosen = rc || arl;
+    if (chosen) {
+      const lat = Number(chosen.latitude); const lng = Number(chosen.longitude);
+      if (isFinite(lat) && isFinite(lng)) merged.push({ name: 'VT Research Center', lat, lng, address: chosen.address });
     }
-  }, [showVTMarkers, isLoaded]);
+
+    merged.forEach((m) => {
+      L.marker([m.lat, m.lng], { icon: vtIcon, zIndexOffset: 1000, pane: 'vtPane' })
+        .addTo(map)
+        .bindPopup(`
+          <div style="text-align: center;">
+            <strong style="color: #E87722;">${m.name}</strong>
+            ${m.address ? `<br><small>${m.address}</small>` : ''}
+          </div>
+        `);
+    });
+  }, [showVTMarkers, isLoaded, referenceLocations]);
 
   return (
     <div className={`relative ${className}`}>
-      <div 
-        ref={mapRef} 
+      <div
+        ref={mapRef}
         className="w-full h-full rounded-lg shadow-lg"
         style={{ height: '600px', minHeight: '600px' }}
       />
-      
-      {/* Loading overlay */}
       {(!isLoaded || loading) && (
         <div className="absolute inset-0 flex items-center justify-center bg-gray-100/90 backdrop-blur-sm rounded-lg">
           <div className="text-center">
@@ -427,11 +433,8 @@ export function LeafletMap({
           </div>
         </div>
       )}
-      
-      {/* Map Controls Panel */}
       <div className="absolute top-4 left-4 z-50">
         <div className="bg-white rounded-lg shadow-lg border border-gray-200 overflow-hidden">
-          {/* Layer Controls */}
           <div className="p-3 border-b border-gray-100">
             <div className="flex items-center gap-2 mb-2">
               <Navigation className="h-4 w-4 text-orange-500" />
@@ -440,38 +443,33 @@ export function LeafletMap({
             <div className="grid grid-cols-3 gap-1">
               <button
                 onClick={() => setCurrentLayer('streets')}
-                className={`px-2 py-1 text-xs rounded transition-colors ${
-                  currentLayer === 'streets' 
-                    ? 'bg-orange-500 text-white' 
-                    : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-                }`}
+                className={`px-2 py-1 text-xs rounded transition-colors ${currentLayer === 'streets'
+                  ? 'bg-orange-500 text-white'
+                  : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                  }`}
               >
                 Streets
               </button>
               <button
                 onClick={() => setCurrentLayer('satellite')}
-                className={`px-2 py-1 text-xs rounded transition-colors ${
-                  currentLayer === 'satellite' 
-                    ? 'bg-orange-500 text-white' 
-                    : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-                }`}
+                className={`px-2 py-1 text-xs rounded transition-colors ${currentLayer === 'satellite'
+                  ? 'bg-orange-500 text-white'
+                  : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                  }`}
               >
                 Satellite
               </button>
               <button
                 onClick={() => setCurrentLayer('transit')}
-                className={`px-2 py-1 text-xs rounded transition-colors ${
-                  currentLayer === 'transit' 
-                    ? 'bg-orange-500 text-white' 
-                    : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-                }`}
+                className={`px-2 py-1 text-xs rounded transition-colors ${currentLayer === 'transit'
+                  ? 'bg-orange-500 text-white'
+                  : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                  }`}
               >
                 Transit
               </button>
             </div>
           </div>
-
-          {/* Map Controls */}
           <div className="p-3 border-b border-gray-100">
             <div className="flex items-center gap-2 mb-2">
               <Zap className="h-4 w-4 text-blue-500" />
@@ -492,18 +490,15 @@ export function LeafletMap({
               </button>
               <button
                 onClick={toggleVTMarkers}
-                className={`w-full px-2 py-1 text-xs rounded transition-colors ${
-                  showVTMarkers 
-                    ? 'bg-orange-50 text-orange-700 hover:bg-orange-100' 
-                    : 'bg-gray-50 text-gray-700 hover:bg-gray-100'
-                }`}
+                className={`w-full px-2 py-1 text-xs rounded transition-colors ${showVTMarkers
+                  ? 'bg-orange-50 text-orange-700 hover:bg-orange-100'
+                  : 'bg-gray-50 text-gray-700 hover:bg-gray-100'
+                  }`}
               >
                 {showVTMarkers ? 'Hide' : 'Show'} VT Campuses
               </button>
             </div>
           </div>
-
-          {/* Legend */}
           <div className="p-3">
             <div className="flex items-center gap-2 mb-2">
               <MapPin className="h-4 w-4 text-gray-500" />
@@ -526,8 +521,6 @@ export function LeafletMap({
           </div>
         </div>
       </div>
-
-      {/* Property Count Badge */}
       <div className="absolute top-4 right-4 z-50">
         <div className="bg-white rounded-lg shadow-lg border border-gray-200 px-3 py-2">
           <div className="flex items-center gap-2">

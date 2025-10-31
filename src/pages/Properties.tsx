@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useRef } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -13,6 +13,7 @@ import { EmptyState } from "@/components/ui/empty-state";
 import { ErrorState } from "@/components/ui/error-state";
 import { listingsAPI, Listing } from "@/lib/api";
 import { Filter, Home, ChevronDown, ChevronUp, MapIcon, Grid3X3, ArrowUpDown, ChevronLeft, ChevronRight, Target } from "lucide-react";
+import { useNavigate } from "react-router-dom";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import PriceRange from "@/components/ui/PriceRange";
 import { supabase } from "@/lib/supabase";
@@ -48,6 +49,36 @@ function parseJSONField(field: any): any {
     return null;
   }
 }
+function lightMapPropertyToListing(property: any) {
+  const photosArray = parseJSONField(property?.photos) || [];
+  const amenitiesData = parseJSONField(property?.amenities) || {};
+  return {
+    id: property?.id,
+    title: property?.name || 'Apartment Complex',
+    price: 0,
+    address: property?.address || '',
+    beds: 0,
+    baths: 0,
+    intlFriendly: Boolean(property?.intl_friendly),
+    imageUrl: property?.thumbnail_url || (photosArray.length > 0 ? photosArray[0] : null),
+    photos: photosArray,
+    description: property?.description || `Apartment complex in ${property?.city || ''}${property?.state ? ', ' + property.state : ''}`,
+    amenities: Array.isArray(amenitiesData) ? amenitiesData : Object.keys(amenitiesData),
+    contactEmail: property?.email || undefined,
+    contactPhone: property?.phone_number || undefined,
+    createdAt: property?.created_at,
+    updatedAt: property?.updated_at,
+    latitude: property?.latitude ?? null,
+    longitude: property?.longitude ?? null,
+    city: property?.city || '',
+    state: property?.state || '',
+    _units: [],
+    _availableUnits: [],
+    _priceRange: { min: 0, max: 0 },
+    _unitCount: 0,
+    _availableUnitCount: 0,
+  } as any;
+}
 // --- Helper: fetch apartment_units in chunks to avoid huge IN() queries ---
 async function fetchUnitsForProperties(ids: string[]) {
   const CHUNK_SIZE = 150; // tune as needed
@@ -69,6 +100,7 @@ async function fetchUnitsForProperties(ids: string[]) {
 }
 
 export default function Properties() {
+  const navigate = useNavigate();
   const [allListings, setAllListings] = useState<Listing[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -77,14 +109,23 @@ export default function Properties() {
   const [selectedProperty, setSelectedProperty] = useState<Listing | null>(null);
 
   const [bounds, setBounds] = useState<Range | null>(null);
-  const [filters, setFilters] = useState<Filters>({
-    minPrice: "",
-    maxPrice: "",
-    beds: [],  // Empty array for multiselect
-    baths: [], // Empty array for multiselect
-    intlFriendly: false,
-    availableOnly: false, // Show all properties by default
-    campus: null, // No campus filter by default
+  const [retryTick, setRetryTick] = useState(0);
+  const [autoRetried, setAutoRetried] = useState(false);
+  const hydratedRef = useRef(false);
+  const [filters, setFilters] = useState<Filters>(() => {
+    try {
+      const saved = localStorage.getItem("props.filters");
+      if (saved) return JSON.parse(saved);
+    } catch { }
+    return {
+      minPrice: "",
+      maxPrice: "",
+      beds: [],
+      baths: [],
+      intlFriendly: false,
+      availableOnly: false,
+      campus: null,
+    } as Filters;
   });
 
   // Campus definitions matching backend
@@ -92,29 +133,58 @@ export default function Properties() {
     {
       id: "arlington",
       name: "VT Research Center – Arlington",
-      lat: 38.883222,
-      lng: -77.111517,
-      radius: 2500, // ~1.5 miles in meters
+      lat: 38.8869,
+      lng: -77.1022,
+      radius: 3219, // 2 miles in meters
     },
     {
       id: "alexandria",
       name: "Washington–Alexandria Architecture Center",
-      lat: 38.806012,
-      lng: -77.050518,
-      radius: 2500, // ~1.5 miles
+      lat: 38.8051,
+      lng: -77.0470,
+      radius: 3219, // 2 miles
     },
     {
       id: "academic",
       name: "Academic Building One (Northern VA)",
-      lat: 38.947211,
-      lng: -77.336989,
-      radius: 3000, // ~2 miles
+      lat: 38.8539,
+      lng: -77.0503,
+      radius: 3219, // 2 miles
     },
   ];
 
-  const [sortBy, setSortBy] = useState<SortOption>('newest');
+  const [sortBy, setSortBy] = useState<SortOption>(() => {
+    const saved = localStorage.getItem("props.sortBy");
+    return (saved as SortOption) || 'newest';
+  });
   const [currentPage, setCurrentPage] = useState(1);
   const itemsPerPage = 15;
+
+  // Persist filters and sort so they survive navigation/back
+  useEffect(() => {
+    try { localStorage.setItem("props.filters", JSON.stringify(filters)); } catch { }
+  }, [filters]);
+  useEffect(() => {
+    try { localStorage.setItem("props.sortBy", sortBy); } catch { }
+  }, [sortBy]);
+
+  // Hydrate from cache immediately so Back is instant
+  useEffect(() => {
+    if (hydratedRef.current) return;
+    try {
+      const cached = localStorage.getItem('props.all');
+      if (cached) {
+        const parsed = JSON.parse(cached);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          const looksMapped = typeof parsed[0]?.title === 'string';
+          const hydrated = looksMapped ? parsed : parsed.map(lightMapPropertyToListing);
+          setAllListings(hydrated);
+          console.log('Properties: Hydrated from cache:', hydrated.length);
+        }
+      }
+    } catch { }
+    hydratedRef.current = true;
+  }, []);
 
   // ---- 1) Fetch listings directly from Supabase (frontend) ----
   useEffect(() => {
@@ -124,21 +194,40 @@ export default function Properties() {
         setError(null);
 
         // Fetch properties directly from Supabase
-        const { data: properties, error: propertiesError } = await supabase
-          .from('apartment_properties_listings')
-          .select('*')
-          .eq('is_active', true)
-          .order('created_at', { ascending: false });
+        const PAGE = 800; // slightly smaller pages to avoid resource spikes
+        let from = 0;
+        let properties: any[] = [];
+        while (true) {
+          let data: any[] | null = null; let error: any = null;
+          for (let attempt = 0; attempt < 5; attempt++) {
+            const res = await supabase
+              .from('apartment_properties_listings')
+              .select('id,name,address,city,state,zip_code,thumbnail_url,photos,amenities,description,email,phone_number,created_at,updated_at,latitude,longitude,is_active')
+              .eq('is_active', true)
+              .order('created_at', { ascending: false })
+              .range(from, from + PAGE - 1);
+            data = res.data as any[] | null; error = res.error;
+            if (!error) break; // success
+            const delay = 200 * Math.pow(2, attempt); // 200..3200ms
+            await new Promise(r => setTimeout(r, delay));
+          }
+          if (error) throw error;
+          if (!data || data.length === 0) break;
+          properties.push(...data);
+          if (data.length < PAGE) break;
+          from += PAGE;
+          // small pacing delay to reduce pressure on the browser/network
+          await new Promise(r => setTimeout(r, 150));
+        }
 
-        if (propertiesError) throw propertiesError;
-
-        if (!properties || properties.length === 0) {
+        if (properties.length === 0) {
           setAllListings([]);
           setBounds([0, 5000]);
           return;
         }
 
         console.log("Properties: Loaded from Supabase:", properties.length, "properties");
+        // We will cache the mapped listings (not raw properties) so hydration has correct shape
 
         // Get property IDs
         const propertyIds = properties.map(p => p.id);
@@ -157,10 +246,10 @@ export default function Properties() {
 
 
         // Build listings with unit data
-          const listings = properties.map(property => {
+        const listings = properties.map(property => {
           const propertyUnits = unitsByProperty.get(property.id) || [];
-                    
-        //image and ammenities
+
+          //image and ammenities
           const photosArray = parseJSONField(property.photos) || [];
           const amenitiesData = parseJSONField(property.amenities) || {};
 
@@ -177,8 +266,8 @@ export default function Properties() {
 
           // Count available units
           const availableUnits = propertyUnits.filter((u: any) => {
-          const s = String(u.availability_status ?? '').toLowerCase().trim();
-          return s.includes('available') || s === 'vacant' || s === 'ready';
+            const s = String(u.availability_status ?? '').toLowerCase().trim();
+            return s.includes('available') || s === 'vacant' || s === 'ready';
           });
 
           return {
@@ -188,7 +277,7 @@ export default function Properties() {
             address: property.address || '',
             beds: maxBeds,
             baths: maxBaths,
-            intlFriendly: property.intl_friendly || false,
+            intlFriendly: Boolean((property as any).intl_friendly ?? (property as any).international_friendly ?? (property as any).intl ?? false),
             imageUrl: property.thumbnail_url || (photosArray.length > 0 ? photosArray[0] : null),
             photos: photosArray,
             description: property.description || `Apartment complex in ${property.city}, ${property.state}`,
@@ -210,6 +299,7 @@ export default function Properties() {
         });
 
         setAllListings(listings);
+        try { localStorage.setItem('props.all', JSON.stringify(listings)); } catch { }
 
         // Set price bounds
         let globalMin = Infinity, globalMax = -Infinity;
@@ -232,18 +322,25 @@ export default function Properties() {
       } catch (e: any) {
         console.error("Error fetching properties:", e);
         setError(e?.message || "Failed to fetch properties from Supabase");
+        // One-time auto-retry after a short delay (helps when navigating back)
+        const msg: string = (e?.message || '').toString();
+        const resourceStarved = msg.includes('INSUFFICIENT_RESOURCES') || msg.includes('Failed to fetch');
+        if (!autoRetried && resourceStarved) {
+          setAutoRetried(true);
+          setTimeout(() => setRetryTick((t) => t + 1), 1500);
+        }
       } finally {
         setLoading(false);
       }
     })();
-  }, []);
+  }, [retryTick]);
 
   // Helper function to calculate distance between two points
   const calculateDistance = (lat1: number, lng1: number, lat2: number, lng2: number): number => {
     const R = 6371000; // Earth's radius in meters
     const dLat = (lat2 - lat1) * Math.PI / 180;
     const dLng = (lng2 - lng1) * Math.PI / 180;
-    const a = 
+    const a =
       Math.sin(dLat / 2) * Math.sin(dLat / 2) +
       Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
       Math.sin(dLng / 2) * Math.sin(dLng / 2);
@@ -252,98 +349,98 @@ export default function Properties() {
   };
 
   // ---- 3) Local filtering (slider & selects) — NO extra backend calls ----
-const filtered = useMemo(() => {
-  console.log("Properties: Filtering with filters:", filters);
-  console.log("Properties: Total listings:", allListings.length);
-  console.log("Properties: Sorting by:", sortBy);
-  
-  // Only apply price bounds if user has set price filters
-  const min = filters.minPrice ? parseInt(filters.minPrice) : 0;
-  const max = filters.maxPrice ? parseInt(filters.maxPrice) : 999999;
+  const filtered = useMemo(() => {
+    console.log("Properties: Filtering with filters:", filters);
+    console.log("Properties: Total listings:", allListings.length);
+    console.log("Properties: Sorting by:", sortBy);
 
-  // Apply filters
-  let result = allListings.filter((l: any) => {
-    // Use backend data directly
-    const priceRange = l._priceRange || { min: l.price || 0, max: l.price || 0 };
+    // Only apply price bounds if user has set price filters
+    const min = filters.minPrice ? parseInt(filters.minPrice) : 0;
+    const max = filters.maxPrice ? parseInt(filters.maxPrice) : 999999;
 
-    // price overlap - use backend price range
-    const priceOk = (filters.minPrice === "" && filters.maxPrice === "") || 
-                   (priceRange.min <= max && priceRange.max >= min);
+    // Apply filters
+    let result = allListings.filter((l: any) => {
+      // Use backend data directly
+      const priceRange = l._priceRange || { min: l.price || 0, max: l.price || 0 };
 
-    // beds/baths - FIXED LOGIC
-    const bedsOk = 
-      filters.beds.length === 0 || // No selection = show all
-      (filters.beds.includes("4") && l.beds >= 4) || // 4+ includes 4 and above
-      filters.beds.some(bed => bed !== "4" && l.beds === parseInt(bed)); // Exact matches for 1,2,3
+      // price overlap - use backend price range
+      const priceOk = (filters.minPrice === "" && filters.maxPrice === "") ||
+        (priceRange.min <= max && priceRange.max >= min);
 
-    const bathsOk = 
-      filters.baths.length === 0 || // No selection = show all
-      (filters.baths.includes("3") && l.baths >= 3) || // 3+ includes 3 and above
-      filters.baths.some(bath => bath !== "3" && l.baths === parseInt(bath)); // Exact matches for 1,2
+      // beds/baths - FIXED LOGIC
+      const bedsOk =
+        filters.beds.length === 0 || // No selection = show all
+        (filters.beds.includes("4") && l.beds >= 4) || // 4+ includes 4 and above
+        filters.beds.some(bed => bed !== "4" && l.beds === parseInt(bed)); // Exact matches for 1,2,3
 
-    // intl flag
-    const intlOk = !filters.intlFriendly || Boolean(l.intlFriendly);
+      const bathsOk =
+        filters.baths.length === 0 || // No selection = show all
+        (filters.baths.includes("3") && l.baths >= 3) || // 3+ includes 3 and above
+        filters.baths.some(bath => bath !== "3" && l.baths === parseInt(bath)); // Exact matches for 1,2
 
-    // availability filter
-    const availabilityOk = !filters.availableOnly || (l._availableUnitCount && l._availableUnitCount > 0);
-    
-    // campus filter
-    let campusOk = true;
-    if (filters.campus) {
-      const selectedCampus = campuses.find(c => c.id === filters.campus);
-      if (selectedCampus && l.latitude && l.longitude) {
-        const distance = calculateDistance(selectedCampus.lat, selectedCampus.lng, l.latitude, l.longitude);
-        campusOk = distance <= selectedCampus.radius;
-      } else {
-        campusOk = false;
+      // intl flag
+      const intlOk = !filters.intlFriendly || Boolean(l.intlFriendly);
+
+      // availability filter
+      const availabilityOk = !filters.availableOnly || (l._availableUnitCount && l._availableUnitCount > 0);
+
+      // campus filter
+      let campusOk = true;
+      if (filters.campus) {
+        const selectedCampus = campuses.find(c => c.id === filters.campus);
+        if (selectedCampus && l.latitude && l.longitude) {
+          const distance = calculateDistance(selectedCampus.lat, selectedCampus.lng, l.latitude, l.longitude);
+          campusOk = distance <= selectedCampus.radius;
+        } else {
+          campusOk = false;
+        }
       }
-    }
 
-    return priceOk && bedsOk && bathsOk && intlOk && availabilityOk && campusOk;
-  });
+      return priceOk && bedsOk && bathsOk && intlOk && availabilityOk && campusOk;
+    });
 
-  console.log("Properties: After filtering:", result.length);
+    console.log("Properties: After filtering:", result.length);
 
-  // ALWAYS APPLY SORTING
-  result.sort((a, b) => {
-    // Sort results to put selected property first
-    if (selectedProperty) {
-      if (a.id === selectedProperty.id) return -1;
-      if (b.id === selectedProperty.id) return 1;
-    }
+    // ALWAYS APPLY SORTING
+    result.sort((a, b) => {
+      // Sort results to put selected property first
+      if (selectedProperty) {
+        if (a.id === selectedProperty.id) return -1;
+        if (b.id === selectedProperty.id) return 1;
+      }
 
-    // Apply the selected sort option
-    switch (sortBy) {
-      case 'newest':
-        return new Date((b as any).createdAt).getTime() - new Date((a as any).createdAt).getTime();
-      case 'oldest':
-        return new Date((a as any).createdAt).getTime() - new Date((b as any).createdAt).getTime();
-      case 'price-low':
-        const priceA = (a as any)._priceRange?.min || (a as any).price || 0;
-        const priceB = (b as any)._priceRange?.min || (b as any).price || 0;
-        if (priceA === 0 && priceB === 0) return 0;
-        if (priceA === 0) return 1;
-        if (priceB === 0) return -1;
-        return priceA - priceB;
-      case 'price-high':
-        const priceAHigh = (a as any)._priceRange?.min || (a as any).price || 0;
-        const priceBHigh = (b as any)._priceRange?.min || (b as any).price || 0;
-        if (priceAHigh === 0 && priceBHigh === 0) return 0;
-        if (priceAHigh === 0) return 1;
-        if (priceBHigh === 0) return -1;
-        return priceBHigh - priceAHigh;
-      case 'name-a':
-        return a.title.localeCompare(b.title);
-      case 'name-z':
-        return b.title.localeCompare(a.title);
-      default:
-        return 0;
-    }
-  });
+      // Apply the selected sort option
+      switch (sortBy) {
+        case 'newest':
+          return new Date((b as any).createdAt).getTime() - new Date((a as any).createdAt).getTime();
+        case 'oldest':
+          return new Date((a as any).createdAt).getTime() - new Date((b as any).createdAt).getTime();
+        case 'price-low':
+          const priceA = (a as any)._priceRange?.min || (a as any).price || 0;
+          const priceB = (b as any)._priceRange?.min || (b as any).price || 0;
+          if (priceA === 0 && priceB === 0) return 0;
+          if (priceA === 0) return 1;
+          if (priceB === 0) return -1;
+          return priceA - priceB;
+        case 'price-high':
+          const priceAHigh = (a as any)._priceRange?.min || (a as any).price || 0;
+          const priceBHigh = (b as any)._priceRange?.min || (b as any).price || 0;
+          if (priceAHigh === 0 && priceBHigh === 0) return 0;
+          if (priceAHigh === 0) return 1;
+          if (priceBHigh === 0) return -1;
+          return priceBHigh - priceAHigh;
+        case 'name-a':
+          return a.title.localeCompare(b.title);
+        case 'name-z':
+          return b.title.localeCompare(a.title);
+        default:
+          return 0;
+      }
+    });
 
-  console.log("Properties: After sort, first 3:", result.slice(0, 3).map(r => r.title.substring(0, 30)));
-  return result;
-}, [allListings, filters, bounds, selectedProperty, sortBy]);
+    console.log("Properties: After sort, first 3:", result.slice(0, 3).map(r => String(r?.title ?? '').substring(0, 30)));
+    return result;
+  }, [allListings, filters, bounds, selectedProperty, sortBy]);
 
   // Pagination logic
   const totalPages = Math.ceil(filtered.length / itemsPerPage);
@@ -355,20 +452,20 @@ const filtered = useMemo(() => {
   useEffect(() => {
     setCurrentPage(1);
   }, [filters]);
-  
+
   const handleFilterChange = (key: keyof Filters, value: any) => {
     setFilters(prev => ({ ...prev, [key]: value }));
   };
 
   const clearFilters = () => {
-    setFilters({ 
-      minPrice: "", 
-      maxPrice: "", 
-      beds: [], 
-      baths: [], 
-      intlFriendly: false, 
+    setFilters({
+      minPrice: "",
+      maxPrice: "",
+      beds: [],
+      baths: [],
+      intlFriendly: false,
       availableOnly: false,
-      campus: null 
+      campus: null
     });
   };
 
@@ -437,15 +534,15 @@ const filtered = useMemo(() => {
           <div>
             <div className="flex items-center gap-4 mb-2">
               <h1 className="text-3xl font-bold text-foreground">Properties</h1>
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => window.location.href = '/roommate-matching'}
-            className="gap-2"
-          >
-            <Home className="h-4 w-4" />
-            Find Roommates
-          </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => navigate('/roommate-matching')}
+                className="gap-2"
+              >
+                <Home className="h-4 w-4" />
+                Find Roommates
+              </Button>
             </div>
             <p className="text-muted">
               {filtered.length} {filtered.length === 1 ? "property" : "properties"} total
@@ -495,7 +592,7 @@ const filtered = useMemo(() => {
                 <MapIcon className="h-4 w-4" />
               </Button>
             </div>
-            
+
             <Badge variant="muted">
               {filtered.filter((l: any) => l.intlFriendly).length} International Friendly
             </Badge>
@@ -517,12 +614,12 @@ const filtered = useMemo(() => {
                   </p>
                 </div>
               </div>
-               <Button
-                 onClick={() => window.location.href = '/roommate-questionnaire'}
-                 className="bg-blue-600 hover:bg-blue-700"
-               >
-                 Start Questionnaire
-               </Button>
+              <Button
+                onClick={() => navigate('/roommate-questionnaire')}
+                className="bg-blue-600 hover:bg-blue-700"
+              >
+                Start Questionnaire
+              </Button>
             </div>
           </CardContent>
         </Card>
@@ -591,8 +688,8 @@ const filtered = useMemo(() => {
                     {/* Campus Filter */}
                     <div className="space-y-3">
                       <Label className="text-sm font-medium">Filter by Campus</Label>
-                      <Select 
-                        value={filters.campus || "all"} 
+                      <Select
+                        value={filters.campus || "all"}
                         onValueChange={(value) => handleFilterChange("campus", value === "all" ? null : value)}
                       >
                         <SelectTrigger className="bg-surface-2 border-surface-3">
@@ -727,22 +824,22 @@ const filtered = useMemo(() => {
               />
             ) : viewMode === "grid" ? (
               <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
-              {paginatedListings.map((listing: any, index: number) => (
-                <div key={listing.id} className="relative">
-                  {/* DEBUG: Visual indicator */}
-                  <div className="absolute top-2 left-2 bg-blue-600 text-white text-xs px-2 py-1 rounded z-20 font-mono">
-                    #{index + 1}: {listing.title.substring(0, 20)}... ${listing.price}
+                {paginatedListings.map((listing: any, index: number) => (
+                  <div key={listing.id} className="relative">
+                    {/* DEBUG: Visual indicator */}
+                    <div className="absolute top-2 left-2 bg-blue-600 text-white text-xs px-2 py-1 rounded z-20 font-mono">
+                      #{index + 1}: {String(listing?.title ?? '').substring(0, 20)}... ${listing?.price ?? 0}
+                    </div>
+
+                    <PropertyCard
+                      listing={{
+                        ...listing,
+                      } as any}
+                      className={selectedProperty?.id === listing.id ? "ring-2 ring-accent" : ""}
+                    />
                   </div>
-                  
-                  <PropertyCard
-                    listing={{
-                      ...listing,
-                    } as any}
-                    className={selectedProperty?.id === listing.id ? "ring-2 ring-accent" : ""}
-                  />
-                </div>
-              ))}
-            </div>
+                ))}
+              </div>
             ) : (
               <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 h-[800px]">
                 <div className="lg:col-span-2">
@@ -790,7 +887,7 @@ const filtered = useMemo(() => {
                   <div className="text-sm text-muted-foreground">
                     Showing {startIndex + 1} to {Math.min(endIndex, filtered.length)} of {filtered.length} properties
                   </div>
-                  
+
                   <div className="flex items-center space-x-2">
                     <Button
                       variant="outline"
@@ -802,7 +899,7 @@ const filtered = useMemo(() => {
                       <ChevronLeft className="h-4 w-4" />
                       Previous
                     </Button>
-                    
+
                     <div className="flex items-center space-x-1">
                       {/* First page */}
                       {totalPages > 5 && currentPage > 3 && (
@@ -818,7 +915,7 @@ const filtered = useMemo(() => {
                           {currentPage > 4 && <span className="text-muted-foreground px-1">...</span>}
                         </>
                       )}
-                      
+
                       {/* Page numbers */}
                       {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
                         let pageNum;
@@ -831,7 +928,7 @@ const filtered = useMemo(() => {
                         } else {
                           pageNum = currentPage - 2 + i;
                         }
-                        
+
                         return (
                           <Button
                             key={pageNum}
@@ -844,7 +941,7 @@ const filtered = useMemo(() => {
                           </Button>
                         );
                       })}
-                      
+
                       {/* Last page */}
                       {totalPages > 5 && currentPage < totalPages - 2 && (
                         <>
@@ -860,7 +957,7 @@ const filtered = useMemo(() => {
                         </>
                       )}
                     </div>
-                    
+
                     <Button
                       variant="outline"
                       size="sm"

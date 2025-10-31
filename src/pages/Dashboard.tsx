@@ -3,14 +3,46 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Heart, Home, Settings, Shield, Star, BookmarkPlus } from "lucide-react";
+import { Heart, Home, Settings, Shield, Star, BookmarkPlus, HeartOff } from "lucide-react";
+import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
+import { favoritesAPI, Listing } from "@/lib/api";
+import { PropertyCard } from "@/components/PropertyCard";
 
 export default function Dashboard() {
   const { user } = useAuth();
   const navigate = useNavigate();
+  const [saved, setSaved] = useState<Listing[] | null>(null);
+  const [loadingSaved, setLoadingSaved] = useState(false);
+  const [removingId, setRemovingId] = useState<string | null>(null);
 
   if (!user) return null;
+  useEffect(() => {
+    let mounted = true;
+    const load = async () => {
+      try {
+        setLoadingSaved(true);
+        const res = await favoritesAPI.getAll();
+        if (mounted) setSaved(res.favorites || []);
+      } catch (e) {
+        if (mounted) setSaved([]);
+      } finally {
+        if (mounted) setLoadingSaved(false);
+      }
+    };
+    load();
+    return () => { mounted = false; };
+  }, []);
+
+  const handleRemove = async (id: string) => {
+    try {
+      setRemovingId(id);
+      await favoritesAPI.remove(id);
+      setSaved((prev) => (prev ? prev.filter((l) => l.id !== id) : prev));
+    } finally {
+      setRemovingId(null);
+    }
+  };
 
   const getRoleBadgeVariant = (role: string) => {
     switch (role) {
@@ -37,7 +69,7 @@ export default function Dashboard() {
                 <span className="text-muted text-sm">{user.email}</span>
               </div>
             </div>
-            
+
             <Button variant="outline" className="gap-2">
               <Settings className="h-4 w-4" />
               Settings
@@ -111,16 +143,39 @@ export default function Dashboard() {
                 </CardDescription>
               </CardHeader>
               <CardContent>
-                <div className="text-center py-12">
-                  <Heart className="h-12 w-12 text-muted mx-auto mb-4" />
-                  <h3 className="text-lg font-semibold text-foreground mb-2">No saved properties yet</h3>
-                  <p className="text-muted mb-6">
-                    Start browsing properties and save your favorites to see them here.
-                  </p>
-                  <Button variant="accent" onClick={() => navigate('/properties')}>
-                    Browse Properties
-                  </Button>
-                </div>
+                {loadingSaved ? (
+                  <div className="text-center py-12 text-muted">Loading...</div>
+                ) : (saved && saved.length > 0) ? (
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                    {saved.map((l) => (
+                      <div key={l.id} className="relative">
+                        <PropertyCard listing={{ ...l, isSaved: true }} />
+                        <div className="mt-2 flex justify-end">
+                          <Button
+                            variant="outline"
+                            onClick={() => handleRemove(l.id)}
+                            disabled={removingId === l.id}
+                            className="gap-2"
+                          >
+                            <HeartOff className="h-4 w-4" />
+                            {removingId === l.id ? 'Removing...' : 'Remove from favorites'}
+                          </Button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="text-center py-12">
+                    <Heart className="h-12 w-12 text-muted mx-auto mb-4" />
+                    <h3 className="text-lg font-semibold text-foreground mb-2">No saved properties yet</h3>
+                    <p className="text-muted mb-6">
+                      Start browsing properties and save your favorites to see them here.
+                    </p>
+                    <Button variant="accent" onClick={() => navigate('/properties')}>
+                      Browse Properties
+                    </Button>
+                  </div>
+                )}
               </CardContent>
             </Card>
           </TabsContent>
