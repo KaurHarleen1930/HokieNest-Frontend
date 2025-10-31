@@ -8,6 +8,7 @@ import { Chip } from "@/components/ui/chip";
 import { PropertyMap } from "@/components/PropertyMap";
 import { ArrowLeft, MapPin, Bed, Bath, Globe, Mail, Phone, Home, Wifi, Car, Shield, Zap, Users } from "lucide-react";
 import { supabase } from "@/lib/supabase";
+import { ReviewsSection } from "@/components/ReviewsSection";
 
 // Helper to parse JSON fields
 function parseJSONField(field: any): any {
@@ -489,6 +490,8 @@ export default function PropertyDetail() {
                 </CardContent>
               </Card>
             )}
+            {/* Reviews (Google + VT) */}
+            {id && <ReviewsSection propertyId={id} />}
           </div>
 
           {/* Sidebar */}
@@ -508,7 +511,7 @@ export default function PropertyDetail() {
                     {units.filter(u => u.availability_status === 'available').length}
                   </span>
                 </div>
-                <div className="flex justify-between items-center pb-3 border-b border-surface-3">
+                <div className="flex justify-between items-center pb-3 border-surface-3 border-b">
                   <span className="text-muted">Price Range</span>
                   <span className="font-semibold">
                     ${listing.price.toLocaleString()}
