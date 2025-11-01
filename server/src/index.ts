@@ -18,6 +18,8 @@ import { mapRoutes } from './routes/map';
 import favoritesRoutes from './routes/favorites';
 import { errorHandler } from './middleware/errorHandler';
 import { supabase } from './lib/supabase';
+import attractionsRouter from './routes/attractions';
+import transitRouter from './routes/transit';
 
 dotenv.config({ path: './.env' });
 
@@ -33,7 +35,8 @@ app.use(cors({
 // Base64 encoded files are ~33% larger than original, so 50MB limit supports ~37MB files
 app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ limit: '50mb', extended: true }));
-
+app.use('/api/v1/attractions', attractionsRouter);
+app.use('/api/v1/transit', transitRouter);
 
 // Session configuration for OAuth
 app.use(session({
