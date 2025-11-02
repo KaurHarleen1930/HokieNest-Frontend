@@ -273,10 +273,6 @@ const Profile = () => {
     }
   };
 
-  const getTotalPriorities = () => {
-    return editPriorities.budget + editPriorities.commute + editPriorities.safety + editPriorities.roommates;
-  };
-
   const isPrioritiesValid = () => getTotalPriorities() === 100;
 
   const handleDelete = async () => {
