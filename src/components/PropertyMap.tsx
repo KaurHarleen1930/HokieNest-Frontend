@@ -8,6 +8,12 @@ import { mapAPI, PropertyMarker, Listing } from '@/lib/api';
 import { SafetyControls } from '@/components/safety/SafetyControls';
 import { supabase } from '@/lib/supabase';
 
+// --- CORRECTED IMPORTS ---
+import { fetchTransitStations, fetchMetroLines, TransitStation, MetroLine,fetchCommuteRoute,
+  CommuteRouteResponse  } from '@/services/transitService'; // Correct function
+import { fetchAttractions, fetchNearbyAttractions,Attraction } from '@/services/attractionsService';
+// -----------------------------
+
 import {
   MapPin,
   Navigation,
@@ -36,6 +42,13 @@ const VT_CAMPUSES = [
 
 // --- Center point for DC area campuses ---
 const MAP_CENTER = [38.85, -77.1] as [number, number];
+// --- ADDED: Campus coordinate lookup for "Get Directions" ---
+const CAMPUS_CENTERS: Record<string, { lat: number; lng: number }> = {
+  academic: { lat: 38.8539, lng: -77.0503 }, // Academic Building One
+  alexandria: { lat: 38.8051, lng: -77.0470 }, // Alexandria Architecture Center
+  arlington: { lat: 38.8869, lng: -77.1022 }, // VT Research Center – Arlington
+};
+// -----------------------------------------------------------
 
 // --- Base map layers ---
 const mapLayers = {
@@ -69,6 +82,8 @@ interface PropertyMapProps {
   };
   selectedCampus?: string | null;
   onCampusChange?: (campusId: string | null) => void;
+  showTransit?: boolean; // <-- Prop from Properties.tsx
+  showAttractions?: boolean; // <-- Prop from Properties.tsx
 }
 
 // --- Safety types/state helpers ---
@@ -82,6 +97,20 @@ const presetWindow = (p: Preset) => {
   return { from, to };
 };
 
+// --- ADDED: Helper for data layer icons ---
+const createDataIcon = (color: string, size: number = 10) => {
+  return L.divIcon({
+    className: 'custom-data-marker',
+    html: `<div style="background-color:${color};width:${size}px;height:${size}px;border-radius:50%;border:1px solid white;box-shadow:0 1px 2px rgba(0,0,0,0.5);"></div>`,
+    iconSize: [size, size],
+    iconAnchor: [size / 2, size / 2],
+  });
+};
+const metroIcon = createDataIcon('#FF4136', 12); // Red for Metro
+const busIcon = createDataIcon('#0074D9', 8); // Blue for Bus
+const attractionIcon = createDataIcon('#2ECC40', 10); // Green for Attraction
+// ------------------------------------------
+
 export const PropertyMap: React.FC<PropertyMapProps> = ({
   properties = [],
   onPropertySelect,
@@ -90,6 +119,8 @@ export const PropertyMap: React.FC<PropertyMapProps> = ({
   filters = {},
   selectedCampus,
   onCampusChange,
+  showTransit, // <-- Get the prop
+  showAttractions, // <-- Get the prop
 }) => {
   // --- Map refs/state ---
   const mapRef = useRef<HTMLDivElement>(null);
@@ -100,12 +131,27 @@ export const PropertyMap: React.FC<PropertyMapProps> = ({
   const vtMarkersRef = useRef<L.Marker[]>([]);
   const referenceMarkersRef = useRef<L.Marker[]>([]);
 
+  // --- ADDED: Refs for data layers ---
+  const transitLayerRef = useRef<L.LayerGroup | null>(null); // For stations and stops
+  const metroLinesLayerRef = useRef<L.LayerGroup | null>(null); // For the colored lines
+  const attractionsLayerRef = useRef<L.LayerGroup | null>(null);
+  const [commute, setCommute] = useState<CommuteRouteResponse['data'] | null>(null);
+  const commuteLayerRef = useRef<L.LayerGroup | null>(null);
+  // ---------------------------------
+
   const [isLoaded, setIsLoaded] = useState(false);
   const [mapProperties, setMapProperties] = useState<PropertyMarker[]>([]);
   const [referenceLocations, setReferenceLocations] = useState<any[]>([]);
   const [currentLayer, setCurrentLayer] = useState<'streets' | 'transit'>('streets');
   const [showVTMarkers, setShowVTMarkers] = useState(true);
   const [showReferenceMarkers, setShowReferenceMarkers] = useState(true);
+
+  // --- ADDED: State for overlay data ---
+  const [transitStations, setTransitStations] = useState<TransitStation[]>([]);
+  const [busStops, setBusStops] = useState<TransitStation[]>([]);
+  const [metroLines, setMetroLines] = useState<MetroLine[]>([]);
+  const [attractions, setAttractions] = useState<Attraction[]>([]);
+  // -------------------------------------
 
   // --- Safety state/refs (from Mohammad) ---
   const [safetyOn, setSafetyOn] = useState(false);
@@ -130,13 +176,25 @@ export const PropertyMap: React.FC<PropertyMapProps> = ({
     if (!map.getPane('vtPane')) {
       map.createPane('vtPane');
       const pane = map.getPane('vtPane');
-      if (pane) (pane.style as any).zIndex = '700';
+      if (pane) (pane.style as any).zIndex = '700'; // VT campuses on top
     }
     if (!map.getPane('refPane')) {
       map.createPane('refPane');
       const pane = map.getPane('refPane');
-      if (pane) (pane.style as any).zIndex = '650';
+      if (pane) (pane.style as any).zIndex = '650'; // Properties
     }
+    // --- ADDED: Pane for data overlays ---
+    if (!map.getPane('dataPane')) {
+      map.createPane('dataPane');
+      const pane = map.getPane('dataPane');
+      if (pane) (pane.style as any).zIndex = '600'; // Data layers (transit, attractions)
+    }
+    if (!map.getPane('linePane')) {
+      map.createPane('linePane');
+      const pane = map.getPane('linePane');
+      if (pane) (pane.style as any).zIndex = '500'; // Metro lines (below markers)
+    }
+    // -------------------------------------
 
     // track bbox for safety queries
     const b0 = map.getBounds();
@@ -153,6 +211,32 @@ export const PropertyMap: React.FC<PropertyMapProps> = ({
       mapInstanceRef.current = null;
     };
   }, []);
+
+  // --- MODIFIED: Fetch overlay data ---
+  useEffect(() => {
+    const fetchOverlayData = async () => {
+      try {
+        // Fetch all data points using the correct function
+        const [stationsRes, stopsRes, linesRes] = await Promise.all([
+        fetchTransitStations({ type: 'metro' }),
+        fetchTransitStations({ type: 'bus_stop' }),
+        // fetchAttractions(), // <-- REMOVE THIS LINE
+        fetchMetroLines()
+      ]);
+        
+        if (stationsRes.success) setTransitStations(stationsRes.data);
+        if (stopsRes.success) setBusStops(stopsRes.data);
+     //   if (attractionsRes.success) setAttractions(attractionsRes.data);
+        if (linesRes.success) setMetroLines(linesRes.data); // <-- ADDED
+
+        console.log(`[PropertyMap] Fetched ${stationsRes.data.length} stations, ${stopsRes.data.length} stops, ${linesRes.data.length} lines.`);
+      } catch (error) {
+        console.error("PropertyMap: Error fetching overlay data:", error);
+      }
+    };
+    fetchOverlayData();
+  }, []); // Runs once on load
+  // ---------------------------------
 
   // --- Fetch map data ---
   useEffect(() => {
@@ -405,7 +489,16 @@ export const PropertyMap: React.FC<PropertyMapProps> = ({
             >
               View Details
             </button>
-          </div>
+            
+            ${showTransit ? `
+              <button
+                onclick="getDirections(${property.latitude}, ${property.longitude})"
+                class="w-full bg-blue-500 text-white px-3 py-2 rounded text-sm hover:bg-blue-600 transition-colors mt-2"
+              >
+                Get Directions
+              </button>
+            ` : ''}
+            </div>
         `);
 
       marker.on('click', () => {
@@ -450,7 +543,20 @@ export const PropertyMap: React.FC<PropertyMapProps> = ({
         (window as any).selectProperty?.(propertyId);
       }
     };
-  }, [mapProperties, properties, selectedProperty, isLoaded, onPropertySelect, filters, selectedCampus]);
+    
+    // --- MODIFIED: "Get Directions" now uses the campus filter ---
+    (window as any).getDirections = (lat: number, lng: number) => {
+      // Use the 'filters' prop which contains the selected campus
+      const selectedCampusKey = (filters as any)?.campus ?? selectedCampus ?? 'arlington';
+      const destination = CAMPUS_CENTERS[selectedCampusKey] || CAMPUS_CENTERS.arlington;
+      const destinationCoords = `${destination.lat},${destination.lng}`;
+
+      const url = `https://www.google.com/maps/dir/?api=1&origin=${lat},${lng}&destination=${destinationCoords}&travelmode=transit`;
+      window.open(url, '_blank');
+    };
+    // --- End of modification ---
+
+  }, [mapProperties, properties, selectedProperty, isLoaded, onPropertySelect, filters, selectedCampus, showTransit]); // Added showTransit
 
   // --- Detail page re-center safeguard ---
   useEffect(() => {
@@ -483,7 +589,225 @@ export const PropertyMap: React.FC<PropertyMapProps> = ({
     next.addTo(map);
     activeBaseLayerRef.current = next;
   }, [currentLayer, isLoaded]);
+  
+  // --- MODIFIED: Toggle Transit data layer ---
+  useEffect(() => {
+    const map = mapInstanceRef.current;
+    if (!map || !isLoaded) return;
 
+    // Always set base layer based on prop
+    setCurrentLayer(showTransit ? 'transit' : 'streets');
+
+    // Clear previous marker layers
+    if (transitLayerRef.current) {
+      map.removeLayer(transitLayerRef.current);
+      transitLayerRef.current = null;
+    }
+    if (metroLinesLayerRef.current) {
+      map.removeLayer(metroLinesLayerRef.current);
+      metroLinesLayerRef.current = null;
+    }
+
+    // If toggled on, add new layers
+    if (showTransit) {
+      // 1. Add Station and Stop Markers
+      const stations = transitStations.map(station => {
+        return L.marker([station.latitude, station.longitude], {
+          icon: metroIcon,
+          pane: 'dataPane'
+        }).bindPopup(`<b>${station.name}</b><br>Metro Station`);
+      });
+      
+      const stops = busStops.map(stop => {
+         return L.marker([stop.latitude, stop.longitude], {
+          icon: busIcon,
+          pane: 'dataPane'
+        }).bindPopup(`<b>${stop.name}</b><br>Bus Stop`);
+      });
+
+      const stationLayerGroup = L.layerGroup([...stations, ...stops]);
+      stationLayerGroup.addTo(map);
+      transitLayerRef.current = stationLayerGroup;
+      
+      // 2. Add Metro Lines
+      try {
+        const linesLayer = L.geoJSON(undefined, {
+          pane: 'linePane', // Draw lines below markers
+          style: (feature) => {
+            return {
+              color: feature?.properties.color || '#888888',
+              weight: 4,
+              opacity: 0.7
+            };
+          },
+          onEachFeature: (feature, layer) => {
+            layer.bindPopup(feature.properties.name);
+          }
+        });
+
+        let linesDrawn = 0;
+        metroLines.forEach(line => {
+          if (line.route_path && (line.route_path.type === "MultiLineString" || line.route_path.type === "LineString")) {
+            // Re-format as a valid GeoJSON Feature
+            const lineFeature = {
+              "type": "Feature",
+              "properties": {
+                "name": line.route_name,
+                "color": line.line_color || '#888888'
+              },
+              "geometry": line.route_path
+            };
+            linesLayer.addData(lineFeature as any);
+            linesDrawn++;
+          }
+        });
+        
+        console.log(`[PropertyMap] Added ${linesDrawn} metro lines to map.`);
+        linesLayer.addTo(map);
+        metroLinesLayerRef.current = linesLayer;
+
+      } catch (e) {
+        console.error("Failed to draw Metro lines:", e);
+      }
+    }
+  }, [showTransit, isLoaded, transitStations, busStops, metroLines]);
+  
+  // --- MODIFIED: Toggle Attractions data layer ---
+  useEffect(() => {
+    const map = mapInstanceRef.current;
+    if (!map || !isLoaded) return;
+
+    // Clear previous layer
+    if (attractionsLayerRef.current) {
+      map.removeLayer(attractionsLayerRef.current);
+      attractionsLayerRef.current = null;
+    }
+    setAttractions([]);
+    // If toggled on, add new layer
+    if (showAttractions && selectedProperty) {
+    console.log(`[PropertyMap] Fetching attractions near ${selectedProperty.id}`);
+    fetchNearbyAttractions(selectedProperty.id)
+      .then(res => {
+        if (res.success && res.data.length > 0) {
+          setAttractions(res.data); // Store them
+
+          // Draw markers
+          const attractionMarkers = res.data.map(attraction => {
+            return L.marker([attraction.latitude, attraction.longitude], {
+              icon: attractionIcon,
+              pane: 'dataPane'
+            }).bindPopup(`<b>${attraction.name}</b><br>${attraction.category}`);
+          });
+
+          const layerGroup = L.layerGroup(attractionMarkers);
+          layerGroup.addTo(map);
+          attractionsLayerRef.current = layerGroup;
+        } else {
+          console.log("[PropertyMap] No nearby attractions found for this property.");
+        }
+      })
+      .catch(err => {
+        console.error("Failed to fetch nearby attractions:", err);
+      });
+  }
+  // If the toggle is on but NO property is selected, do nothing.
+  // (This fulfills your request to only show attractions *near a property*)
+
+}, [showAttractions, selectedProperty, isLoaded]);
+  // ------------------------------------------
+// --- ADDED: Fetch Commute Route ---
+  useEffect(() => {
+    const map = mapInstanceRef.current;
+    if (!map) return;
+
+    // Clear existing commute layer
+    if (commuteLayerRef.current) {
+      map.removeLayer(commuteLayerRef.current);
+      commuteLayerRef.current = null;
+    }
+
+    // Get selected campus key from filters
+    const campusKey = (filters as any)?.campus ?? selectedCampus ?? null;
+
+    // Don't draw if no campus or property is selected
+    if (!selectedProperty || !campusKey) {
+      setCommute(null); // Clear commute data
+      return;
+    }
+
+    // Find the campus coordinates
+    const campusCenter = CAMPUS_CENTERS[campusKey as keyof typeof CAMPUS_CENTERS];
+    if (!campusCenter) {
+      console.warn(`[PropertyMap] Could not find campus center for key: ${campusKey}`);
+      setCommute(null);
+      return;
+    }
+
+    console.log(`[PropertyMap] Fetching commute from ${selectedProperty.name} to ${campusKey}`);
+    
+    // Fetch the commute route
+    fetchCommuteRoute(
+      selectedProperty.latitude!,
+      selectedProperty.longitude!,
+      campusCenter.lat,
+      campusCenter.lng
+    )
+    .then(res => {
+      setCommute(res.data); // Store route data in state
+    })
+    .catch(err => {
+      console.error("Failed to fetch commute route:", err);
+      setCommute(null);
+    });
+
+  }, [selectedProperty, selectedCampus, filters]); // Runs when property or campus filter changes
+
+  // --- ADDED: Render Commute Route ---
+  useEffect(() => {
+    const map = mapInstanceRef.current;
+    // Only render if we have a map and commute data
+    if (!map || !commute || !selectedProperty) return;
+
+    // Clear previous layer just in case
+    if (commuteLayerRef.current) {
+      map.removeLayer(commuteLayerRef.current);
+    }
+
+    const commuteLayer = L.layerGroup();
+
+    // 1. Get positions
+    const propertyPos: [number, number] = [selectedProperty.latitude!, selectedProperty.longitude!];
+    const fromStationPos: [number, number] = [commute.fromStation.station_lat, commute.fromStation.station_lng];
+    const toStationPos: [number, number] = [commute.toStation.station_lat, commute.toStation.station_lng];
+
+    // Find campus position again
+    const campusKey = (filters as any)?.campus ?? selectedCampus ?? 'arlington';
+    const campusCenter = CAMPUS_CENTERS[campusKey as keyof typeof CAMPUS_CENTERS] || CAMPUS_CENTERS.arlington;
+    const campusPos: [number, number] = [campusCenter.lat, campusCenter.lng];
+
+    // 2. Create polylines
+    // Property -> Start Station (Pink, dashed)
+    L.polyline([propertyPos, fromStationPos], { color: '#D61A5F', dashArray: '5, 10', weight: 2, pane: 'dataPane' }).addTo(commuteLayer);
+    // Station -> Station (Blue, solid)
+    L.polyline([fromStationPos, toStationPos], { color: '#007ACC', weight: 4, opacity: 0.8, pane: 'linePane' })
+      .bindTooltip(`<b>Metro: ${commute.commute.travelTime} mins</b><br>${commute.fromStation.station_name} to ${commute.toStation.station_name}`, { sticky: true })
+      .addTo(commuteLayer);
+    // End Station -> Campus (Orange, dashed)
+    L.polyline([toStationPos, campusPos], { color: '#E87722', dashArray: '5, 10', weight: 2, pane: 'dataPane' }).addTo(commuteLayer);
+      
+    // 3. Add station markers
+    L.marker(fromStationPos, { icon: createDataIcon('#007ACC', 12), pane: 'dataPane', zIndexOffset: 200 })
+      .bindPopup(`<b>Start:</b> ${commute.fromStation.station_name}`)
+      .addTo(commuteLayer);
+    L.marker(toStationPos, { icon: createDataIcon('#E87722', 12), pane: 'dataPane', zIndexOffset: 200 })
+      .bindPopup(`<b>End:</b> ${commute.toStation.station_name}`)
+      .addTo(commuteLayer);
+
+    // 4. Add layer to map
+    commuteLayer.addTo(map);
+    commuteLayerRef.current = commuteLayer;
+
+  }, [commute, selectedProperty, filters, selectedCampus]); // Runs when commute data or context changes
   // --- Toggle VT markers ---
   useEffect(() => {
     const map = mapInstanceRef.current;

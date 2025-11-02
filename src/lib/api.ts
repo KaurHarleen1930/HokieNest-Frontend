@@ -1,5 +1,6 @@
 import { supabase } from "./supabase";
-
+import { fetchAttractions, Attraction, AttractionFilters, fetchNearbyAttractions } from '@/services/attractionsService';
+import { fetchNearbyTransit, fetchTransitStations, StationFilters, TransitStation } from '@/services/transitService';
 const API_BASE_URL =
   `${import.meta.env.VITE_API_URL ?? 'http://localhost:4000'}/api/v1`;
 
@@ -10,6 +11,7 @@ interface ListingFilters {
   baths?: number;
   intlFriendly?: boolean;
 }
+
 
 export interface Listing {
   id: string;
@@ -52,6 +54,31 @@ export interface Listing {
     distanceText: string;
   }>;
 }
+
+// Use with your existing apiRequest pattern
+export const attractionsAPI = {
+  getAll: async (filters?: AttractionFilters): Promise<Attraction[]> => {
+    const response = await fetchAttractions(filters);
+    return response.data;
+  },
+  
+  getNearby: async (propertyId: string) => {
+    const response = await fetchNearbyAttractions(propertyId);
+    return response.data;
+  }
+};
+
+export const transitAPI = {
+  getStations: async (filters?: StationFilters): Promise<TransitStation[]> => {
+    const response = await fetchTransitStations(filters);
+    return response.data;
+  },
+  
+  getNearby: async (propertyId: string) => {
+    const response = await fetchNearbyTransit(propertyId);
+    return response.data;
+  }
+};
 
 export interface User {
   id: string;
