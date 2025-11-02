@@ -7,20 +7,34 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Utensils, Wine, Coffee, Train, MapPin } from 'lucide-react';
 
-// Fix Leaflet default icon issue
-import icon from 'leaflet/dist/images/marker-icon.png';
-import iconShadow from 'leaflet/dist/images/marker-shadow.png';
-import iconRetina from 'leaflet/dist/images/marker-icon-2x.png';
-
-const DefaultIcon = new Icon({
-  iconUrl: icon,
-  iconRetinaUrl: iconRetina,
-  shadowUrl: iconShadow,
-  iconSize: [25, 41],
-  iconAnchor: [12, 41],
-  popupAnchor: [1, -34],
-  shadowSize: [41, 41]
+// --- MODIFIED: Replaced the default "brown box" icon ---
+const DefaultIcon = new DivIcon({
+  className: 'custom-property-marker-main',
+  html: `
+    <div style="
+      background-color: #630031; /* VT Maroon */
+      color: white;
+      font-size: 18px;
+      font-weight: bold;
+      font-family: sans-serif;
+      width: 36px;
+      height: 36px;
+      border-radius: 50% 50% 50% 0;
+      transform: rotate(-45deg);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      border: 3px solid white;
+      box-shadow: 0 2px 5px rgba(0,0,0,0.4);
+    ">
+      <span style="transform: rotate(45deg);">H</span>
+    </div>
+  `,
+  iconSize: [36, 36],
+  iconAnchor: [18, 36], // Point of the "teardrop"
+  popupAnchor: [0, -38]
 });
+// --- END OF MODIFICATION ---
 
 interface PropertyMapWithOverlaysProps {
   propertyId: string;
@@ -52,38 +66,37 @@ interface TransitStation {
   distance_miles: number;
 }
 
-// Custom marker icons
-const createCustomIcon = (color: string, iconText: string) => {
+// Simpler, smaller custom marker icons
+const createCustomIcon = (iconText: string, color: string) => {
   return new DivIcon({
     className: 'custom-marker',
     html: `
       <div style="
         background-color: ${color};
-        width: 32px;
-        height: 32px;
+        width: 28px;
+        height: 28px;
         border-radius: 50%;
-        border: 3px solid white;
-        box-shadow: 0 2px 5px rgba(0,0,0,0.3);
+        border: 2px solid white;
+        box-shadow: 0 1px 3px rgba(0,0,0,0.3);
         display: flex;
         align-items: center;
         justify-content: center;
-        color: white;
-        font-weight: bold;
-        font-size: 16px;
+        font-size: 14px;
       ">
         ${iconText}
       </div>
     `,
-    iconSize: [32, 32],
-    iconAnchor: [16, 16],
-    popupAnchor: [0, -16]
+    iconSize: [28, 28],
+    iconAnchor: [14, 14],
+    popupAnchor: [0, -14]
   });
 };
 
-const restaurantIcon = createCustomIcon('#f97316', '🍽️');
-const barIcon = createCustomIcon('#8b5cf6', '🍷');
-const cafeIcon = createCustomIcon('#10b981', '☕');
-const transitIcon = createCustomIcon('#3b82f6', '🚇');
+const restaurantIcon = createCustomIcon('🍽️', '#f97316'); // orange
+const barIcon = createCustomIcon('🍷', '#8b5cf6'); // purple
+const cafeIcon = createCustomIcon('☕', '#10b981'); // green
+const transitIcon = createCustomIcon('🚇', '#3b82f6'); // blue
+
 
 export default function PropertyMapWithOverlays({
   propertyId,
@@ -113,6 +126,7 @@ export default function PropertyMapWithOverlays({
 
   const loadAttractions = async () => {
     try {
+      // NOTE: Using a relative path. Ensure your proxy is set up in vite.config.ts
       const response = await fetch(`/api/v1/attractions/nearby/${propertyId}`);
       const data = await response.json();
       if (data.success) {
@@ -125,6 +139,7 @@ export default function PropertyMapWithOverlays({
 
   const loadTransit = async () => {
     try {
+      // NOTE: Using a relative path. Ensure your proxy is set up in vite.config.ts
       const response = await fetch(`/api/v1/transit/nearby/${propertyId}`);
       const data = await response.json();
       if (data.success) {
@@ -137,6 +152,14 @@ export default function PropertyMapWithOverlays({
 
   const toggleLayer = (layer: keyof typeof layerToggles) => {
     setLayerToggles(prev => ({ ...prev, [layer]: !prev[layer] }));
+  };
+
+  const handleGetDirections = (lat: number, lng: number) => {
+    // ---- **** REPLACE WITH YOUR UNIVERSITY'S COORDINATES **** ----
+    const universityCoords = "37.2296,-80.4139"; // Example: Virginia Tech
+    
+    const url = `http://googleusercontent.com/maps/google.com/0{lat},${lng}&destination=${universityCoords}&travelmode=transit`;
+    window.open(url, '_blank');
   };
 
   const getAttractionIcon = (category: string) => {
@@ -207,16 +230,27 @@ export default function PropertyMapWithOverlays({
         className="rounded-lg"
       >
         <TileLayer
-          attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
+          attribution='© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
           url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
         />
 
-        {/* Property Marker */}
+        {/* Property Marker (NOW USES NEW ICON) */}
         <Marker position={center} icon={DefaultIcon}>
           <Popup>
-            <div className="text-center">
-              <div className="font-semibold">Your Property</div>
-              <Badge variant="secondary" className="mt-1">Selected</Badge>
+            <div className="text-center flex flex-col gap-2">
+              <div>
+                <div className="font-semibold">Your Property</div>
+                <Badge variant="secondary" className="mt-1">Selected</Badge>
+              </div>
+              {layerToggles.transit && (
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => handleGetDirections(center[0], center[1])}
+                >
+                  Get Directions
+                </Button>
+              )}
             </div>
           </Popup>
         </Marker>

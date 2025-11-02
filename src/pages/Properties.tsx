@@ -1,3 +1,4 @@
+// src/pages/Properties.tsx
 import { useState, useEffect, useMemo, useRef } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -12,7 +13,20 @@ import { PropertiesListSkeleton } from "@/components/ui/loading-skeleton";
 import { EmptyState } from "@/components/ui/empty-state";
 import { ErrorState } from "@/components/ui/error-state";
 import { listingsAPI, Listing } from "@/lib/api";
-import { Filter, Home, ChevronDown, ChevronUp, MapIcon, Grid3X3, ArrowUpDown, ChevronLeft, ChevronRight, Target } from "lucide-react";
+import {
+  Filter,
+  Home,
+  ChevronDown,
+  ChevronUp,
+  MapIcon,
+  Grid3X3,
+  ArrowUpDown,
+  ChevronLeft,
+  ChevronRight,
+  Target,
+  Train, // <-- ADDED
+  MapPin, // <-- ADDED
+} from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import PriceRange from "@/components/ui/PriceRange";
@@ -107,6 +121,11 @@ export default function Properties() {
   const [filtersOpen, setFiltersOpen] = useState(true);
   const [viewMode, setViewMode] = useState<"grid" | "map">("grid");
   const [selectedProperty, setSelectedProperty] = useState<Listing | null>(null);
+
+  // --- ADDED STATE ---
+  const [showTransit, setShowTransit] = useState(false);
+  const [showAttractions, setShowAttractions] = useState(false);
+  // -------------------
 
   const [bounds, setBounds] = useState<Range | null>(null);
   const [retryTick, setRetryTick] = useState(0);
@@ -841,8 +860,10 @@ export default function Properties() {
                 ))}
               </div>
             ) : (
+              // --- MAP VIEW ---
               <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 h-[800px]">
-                <div className="lg:col-span-2">
+                {/* --- MODIFIED SECTION --- */}
+                <div className="lg:col-span-2 relative"> {/* Added relative positioning */}
                   <PropertyMap
                     properties={filtered as any}
                     selectedProperty={selectedProperty as any}
@@ -857,7 +878,29 @@ export default function Properties() {
                       campus: filters.campus
                     }}
                     selectedCampus={filters.campus}
+                    showTransit={showTransit} // <-- ADDED: Pass showTransit
+                    showAttractions={showAttractions} // <-- ADDED: Pass showAttractions
                   />
+                  {/* --- ADDED: Transit/Attractions Buttons Overlay --- */}
+                  <div className="absolute top-4 right-4 z-[401] flex flex-col sm:flex-row gap-2">
+                    <Button
+                      variant={showTransit ? "default" : "outline"}
+                      onClick={() => setShowTransit(!showTransit)}
+                      className="bg-white hover:bg-gray-100 text-gray-800 shadow-lg"
+                    >
+                      <Train className="h-4 w-4 mr-2" />
+                      Transit
+                    </Button>
+                    <Button
+                      variant={showAttractions ? "default" : "outline"}
+                      onClick={() => setShowAttractions(!showAttractions)}
+                      className="bg-white hover:bg-gray-100 text-gray-800 shadow-lg"
+                    >
+                      <MapPin className="h-4 w-4 mr-2" />
+                      Attractions
+                    </Button>
+                  </div>
+                  {/* --- END OF MODIFIED SECTION --- */}
                 </div>
                 <div className="space-y-4 overflow-y-auto">
                   <h3 className="font-semibold text-lg">Properties ({filtered.length})</h3>
