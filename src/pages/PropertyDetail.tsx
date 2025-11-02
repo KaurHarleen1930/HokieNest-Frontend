@@ -1,13 +1,22 @@
-// src/pages/PropertyDetail.tsx - UPDATED VERSION WITH UNITS DISPLAY
+// src/pages/PropertyDetail.tsx
 import { useState, useEffect } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Chip } from "@/components/ui/chip";
-import { PropertyMap } from "@/components/PropertyMap";
 import { ArrowLeft, MapPin, Bed, Bath, Globe, Mail, Phone, Home, Wifi, Car, Shield, Zap, Users } from "lucide-react";
 import { supabase } from "@/lib/supabase";
+import { ReviewsSection } from "@/components/ReviewsSection";
+
+// --- ADD NEW IMPORTS ---
+import PropertyMapWithOverlays from "@/components/Map/PropertyMapWithOverlays";
+import NearbyLocationsCard from "@/components/Property/NearbyLocationsCard"; // <-- RENAMED
+import { fetchNearbyAttractions } from "@/services/attractionsService";
+import { fetchNearbyTransit } from "@/services/transitService"; // <-- IMPORT TRANSIT
+import type { Attraction } from "@/services/attractionsService";
+import type { TransitStation } from "@/services/transitService"; // <-- IMPORT TRANSIT TYPE
+// -----------------------
 
 // Helper to parse JSON fields
 function parseJSONField(field: any): any {
@@ -40,6 +49,7 @@ interface Unit {
   photos: any;
 }
 
+
 export default function PropertyDetail() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
@@ -48,6 +58,11 @@ export default function PropertyDetail() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [selectedImageIndex, setSelectedImageIndex] = useState(0);
+
+  // --- ADDED/MODIFIED STATE ---
+  const [attractions, setAttractions] = useState<Attraction[]>([]);
+  const [transit, setTransit] = useState<TransitStation[]>([]); // <-- ADDED
+  // -----------------------------
 
   useEffect(() => {
     if (!id) return;
@@ -121,6 +136,30 @@ export default function PropertyDetail() {
         });
 
         setUnits(parsedUnits);
+
+        // --- MODIFIED: FETCH ALL NEARBY DATA ---
+        if (property.id) {
+          try {
+            // Fetch attractions
+            const attractionsData = await fetchNearbyAttractions(property.id, { maxDistance: 5000 });
+            if (attractionsData.success) {
+                setAttractions(attractionsData.data);
+            }
+          } catch (attractionsError) {
+            console.error('Error fetching attractions:', attractionsError);
+          }
+          
+          try {
+            // Fetch transit
+            const transitData = await fetchNearbyTransit(property.id, { maxDistance: 5000 });
+            if (transitData.success) {
+                setTransit(transitData.data);
+            }
+          } catch (transitError) {
+            console.error('Error fetching transit:', transitError);
+          }
+        }
+        // ---------------------------------
 
       } catch (err) {
         console.error('Error loading property:', err);
@@ -468,19 +507,25 @@ export default function PropertyDetail() {
               </Card>
             )}
 
+            {/* --- REPLACED: New Nearby Locations Card --- */}
+            <NearbyLocationsCard attractions={attractions} transit={transit} />
+            {/* ------------------------------------------- */}
+
+
             {/* Property Map */}
             {listing.latitude && listing.longitude && (
               <Card className="bg-surface border-surface-3">
                 <CardHeader>
-                  <CardTitle>Location</CardTitle>
+                  <CardTitle>Location & Nearby</CardTitle>
                 </CardHeader>
                 <CardContent>
-                  <div className="h-80 rounded-lg overflow-hidden">
-                    <PropertyMap
-                      properties={[listing]}
-                      selectedProperty={listing}
-                      onPropertySelect={() => {}}
-                      className="h-full"
+                  <div className="h-[500px] rounded-lg overflow-hidden">
+                    <PropertyMapWithOverlays
+                      propertyId={listing.id}
+                      center={[listing.latitude, listing.longitude]}
+                      zoom={14}
+                      showAttractions={true}
+                      showTransit={true}
                     />
                   </div>
                   <div className="mt-3 text-center">
@@ -489,6 +534,9 @@ export default function PropertyDetail() {
                 </CardContent>
               </Card>
             )}
+            
+            {/* Reviews (Google + VT) */}
+            {id && <ReviewsSection propertyId={id} />}
           </div>
 
           {/* Sidebar */}
@@ -508,7 +556,7 @@ export default function PropertyDetail() {
                     {units.filter(u => u.availability_status === 'available').length}
                   </span>
                 </div>
-                <div className="flex justify-between items-center pb-3 border-b border-surface-3">
+                <div className="flex justify-between items-center pb-3 border-surface-3 border-b">
                   <span className="text-muted">Price Range</span>
                   <span className="font-semibold">
                     ${listing.price.toLocaleString()}

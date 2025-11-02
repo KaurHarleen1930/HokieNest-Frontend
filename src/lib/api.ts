@@ -1,5 +1,6 @@
 import { supabase } from "./supabase";
-
+import { fetchAttractions, Attraction, AttractionFilters, fetchNearbyAttractions } from '@/services/attractionsService';
+import { fetchNearbyTransit, fetchTransitStations, StationFilters, TransitStation } from '@/services/transitService';
 const API_BASE_URL =
   `${import.meta.env.VITE_API_URL ?? 'http://localhost:4000'}/api/v1`;
 
@@ -10,6 +11,7 @@ interface ListingFilters {
   baths?: number;
   intlFriendly?: boolean;
 }
+
 
 export interface Listing {
   id: string;
@@ -53,6 +55,31 @@ export interface Listing {
   }>;
   
 }
+
+// Use with your existing apiRequest pattern
+export const attractionsAPI = {
+  getAll: async (filters?: AttractionFilters): Promise<Attraction[]> => {
+    const response = await fetchAttractions(filters);
+    return response.data;
+  },
+  
+  getNearby: async (propertyId: string) => {
+    const response = await fetchNearbyAttractions(propertyId);
+    return response.data;
+  }
+};
+
+export const transitAPI = {
+  getStations: async (filters?: StationFilters): Promise<TransitStation[]> => {
+    const response = await fetchTransitStations(filters);
+    return response.data;
+  },
+  
+  getNearby: async (propertyId: string) => {
+    const response = await fetchNearbyTransit(propertyId);
+    return response.data;
+  }
+};
 
 export interface User {
   id: string;
@@ -160,8 +187,9 @@ export const mapAPI = {
    */
   async getReferenceLocations(type?: string): Promise<ReferenceLocation[]> {
     const params = type ? `?location_type=${type}` : '';
-    const url = `${API_BASE_URL}/map/reference-locations${params}`;
-    const response = await fetch(url);
+    const sep = params ? '&' : '?';
+    const url = `${API_BASE_URL}/map/reference-locations${params}${sep}ts=${Date.now()}`;
+    const response = await fetch(url, { cache: 'no-store' });
     if (!response.ok) {
       throw new Error('Failed to fetch reference locations');
     }
@@ -236,7 +264,7 @@ async function apiRequest<T>(
   try {
     // CHANGE: Don't set Content-Type for FormData (browser sets it automatically with boundary)
     const isFormData = options.body instanceof FormData;
-    
+
     const response = await fetch(url, {
       ...options,
       headers: {
@@ -288,6 +316,28 @@ export const listingsAPI = {
   },
 };
 
+// Favorites API
+export const favoritesAPI = {
+  // Get current user's saved properties
+  getAll: async (): Promise<{ favorites: Listing[] }> => {
+    return apiRequest<{ favorites: Listing[] }>(`/favorites`, { method: 'GET' });
+  },
+
+  // Save a property
+  save: async (listingId: string): Promise<{ success: boolean; message: string }> => {
+    return apiRequest<{ success: boolean; message: string }>(`/favorites/${listingId}`, {
+      method: 'POST',
+    });
+  },
+
+  // Remove a saved property
+  remove: async (listingId: string): Promise<{ success: boolean; message: string }> => {
+    return apiRequest<{ success: boolean; message: string }>(`/favorites/${listingId}`, {
+      method: 'DELETE',
+    });
+  },
+};
+
 
 // Users API (Admin)
 export const usersAPI = {
@@ -315,10 +365,10 @@ export const roommatesAPI = {
   }> => {
     const params = new URLSearchParams();
     if (limit !== 20) params.append('limit', limit.toString());
-    
+
     const queryString = params.toString();
     const endpoint = `/roommates/matches${queryString ? `?${queryString}` : ''}`;
-    
+
     return apiRequest(endpoint);
   },
 
@@ -478,7 +528,7 @@ export const preferencesAPI = {
   },
 
   // Get housing priorities
-  getHousingPriorities: async (): Promise<{ 
+  getHousingPriorities: async (): Promise<{
     priorities: { budget: number; commute: number; safety: number; roommates: number };
     isDefault: boolean;
     lastUpdated?: string;
@@ -557,7 +607,7 @@ export const chatbotAPI = {
     const params = new URLSearchParams();
     if (category) params.append('category', category);
     if (limit) params.append('limit', limit.toString());
-    
+
     return apiRequest(`/chatbot/faq?${params.toString()}`);
   },
 
@@ -729,12 +779,12 @@ export const chatAPI = {
     // CHANGE: Convert file to base64 and send as JSON
     return new Promise((resolve, reject) => {
       const reader = new FileReader();
-      
+
       reader.onload = async () => {
         try {
           // Extract base64 data (remove data:...;base64, prefix)
           const base64String = (reader.result as string).split(',')[1];
-          
+
           const response = await apiRequest<{ success: boolean; url: string; size: number }>('/chat/upload', {
             method: 'POST',
             body: JSON.stringify({
@@ -744,17 +794,17 @@ export const chatAPI = {
               fileSize: file.size
             }),
           });
-          
+
           resolve(response);
         } catch (error) {
           reject(error);
         }
       };
-      
+
       reader.onerror = () => {
         reject(new Error('Failed to read file'));
       };
-      
+
       reader.readAsDataURL(file);
     });
   },
@@ -818,6 +868,19 @@ export const notificationsAPI = {
   // Get unread count
   getUnreadCount: async (): Promise<{ success: boolean; unreadCount: number }> => {
     return apiRequest<{ success: boolean; unreadCount: number }>(`/notifications/unread-count`);
+  },
+
+  // Send an email (generic)
+  sendEmail: async (
+    to: string,
+    subject: string,
+    body: string,
+    html?: string
+  ): Promise<{ success: boolean; message: string }> => {
+    return apiRequest<{ success: boolean; message: string }>(`/notifications/send-email`, {
+      method: 'POST',
+      body: JSON.stringify({ to, subject, body, html }),
+    });
   },
 };
 

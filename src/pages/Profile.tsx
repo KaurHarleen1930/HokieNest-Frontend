@@ -12,9 +12,11 @@ import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Slider } from "@/components/ui/slider";
 import { Progress } from "@/components/ui/progress";
 import { Separator } from "@/components/ui/separator";
-import { User, Mail, Shield, Calendar, Edit, Save, X, Trash2, AlertTriangle, Target, DollarSign, MapPin, Shield as ShieldIcon, Users, Settings, BarChart3 } from "lucide-react";
+import { User, Mail, Shield, Calendar, Edit, Save, X, Trash2, AlertTriangle, Target, DollarSign, MapPin, Shield as ShieldIcon, Users, Settings, BarChart3, Bell, BellOff } from "lucide-react";
 import { toast } from "sonner";
 import { HousingStatus, HousingStatusLabels } from "@/types/HousingStatus";
+import { Switch } from "@/components/ui/switch";
+import { notificationsAPI } from "@/lib/api";
 
 interface ProfileData {
   gender: string;
@@ -61,11 +63,14 @@ const Profile = () => {
     safety: 25,
     roommates: 25,
   });
+  const [emailNotificationsEnabled, setEmailNotificationsEnabled] = useState(true);
+  const [loadingPreferences, setLoadingPreferences] = useState(false);
 
   useEffect(() => {
     if (user) {
       fetchProfileData();
       fetchHousingPriorities();
+      fetchNotificationPreferences();
     }
   }, [user]);
 
@@ -221,6 +226,56 @@ const Profile = () => {
     editPriorities.commute +
     editPriorities.safety +
     editPriorities.roommates;
+  const fetchNotificationPreferences = async () => {
+    try {
+      const response = await notificationsAPI.getPreferences();
+      if (response.success && response.preferences) {
+        // Check if all email notifications are disabled
+        const allEmailsDisabled = 
+          !response.preferences.email_messages &&
+          !response.preferences.email_connections &&
+          !response.preferences.email_matches;
+        setEmailNotificationsEnabled(!allEmailsDisabled);
+      }
+    } catch (error) {
+      console.error('Error fetching notification preferences:', error);
+    }
+  };
+
+  const handleToggleEmailNotifications = async (enabled: boolean) => {
+    try {
+      setLoadingPreferences(true);
+      
+      // Update all email notification preferences at once
+      const preferences = {
+        email_messages: enabled,
+        email_connections: enabled,
+        email_matches: enabled,
+      };
+      
+      const response = await notificationsAPI.updatePreferences(preferences);
+      
+      if (response.success) {
+        setEmailNotificationsEnabled(enabled);
+        toast.success(
+          enabled 
+            ? 'Email notifications enabled for all types'
+            : 'All email notifications muted'
+        );
+      } else {
+        toast.error('Failed to update notification preferences');
+      }
+    } catch (error) {
+      console.error('Error updating notification preferences:', error);
+      toast.error('Failed to update notification preferences');
+    } finally {
+      setLoadingPreferences(false);
+    }
+  };
+
+  const getTotalPriorities = () => {
+    return editPriorities.budget + editPriorities.commute + editPriorities.safety + editPriorities.roommates;
+  };
 
   const isPrioritiesValid = () => getTotalPriorities() === 100;
 
@@ -611,6 +666,44 @@ const Profile = () => {
                     </div>
                   </div>
                 )}
+              </div>
+
+              {/* Notification Settings Section */}
+              <div className="pt-4 border-t">
+                <div className="flex items-center justify-between mb-4">
+                  <div>
+                    <h3 className="text-lg font-semibold flex items-center gap-2">
+                      <Bell className="h-5 w-5" />
+                      Notification Settings
+                    </h3>
+                    <p className="text-sm text-muted-foreground mt-1">
+                      Control your email notification preferences
+                    </p>
+                  </div>
+                </div>
+                
+                <div className="flex items-center justify-between p-4 bg-muted/50 rounded-lg">
+                  <div className="flex items-center gap-3">
+                    {emailNotificationsEnabled ? (
+                      <Bell className="h-5 w-5 text-primary" />
+                    ) : (
+                      <BellOff className="h-5 w-5 text-muted-foreground" />
+                    )}
+                    <div>
+                      <p className="font-medium">Email Notifications</p>
+                      <p className="text-sm text-muted-foreground">
+                        {emailNotificationsEnabled
+                          ? 'You will receive email notifications for messages, connections, and matches'
+                          : 'All email notifications are currently muted'}
+                      </p>
+                    </div>
+                  </div>
+                  <Switch
+                    checked={emailNotificationsEnabled}
+                    onCheckedChange={handleToggleEmailNotifications}
+                    disabled={loadingPreferences}
+                  />
+                </div>
               </div>
 
               {/* Delete Account Section */}

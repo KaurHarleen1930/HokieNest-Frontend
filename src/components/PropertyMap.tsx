@@ -1,12 +1,18 @@
 // src/components/PropertyMap.tsx
 import React, { useEffect, useRef, useState } from 'react';
-import L from 'leaflet';
+import * as L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import 'leaflet.heat';
 
 import { mapAPI, PropertyMarker, Listing } from '@/lib/api';
 import { SafetyControls } from '@/components/safety/SafetyControls';
 import { supabase } from '@/lib/supabase';
+
+// --- CORRECTED IMPORTS ---
+import { fetchTransitStations, fetchMetroLines, TransitStation, MetroLine,fetchCommuteRoute,
+  CommuteRouteResponse  } from '@/services/transitService'; // Correct function
+import { fetchAttractions, fetchNearbyAttractions,Attraction } from '@/services/attractionsService';
+// -----------------------------
 
 import {
   MapPin,
@@ -23,7 +29,7 @@ L.Icon.Default.mergeOptions({
   shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/images/marker-shadow.png',
 });
 
-// --- VT Campus locations (DC area only) ---
+// --- VT Campus locations (Blacksburg) ---
 const VT_CAMPUSES = [
   {
     name: 'VT Research Center – Arlington',
@@ -32,24 +38,17 @@ const VT_CAMPUSES = [
     id: 'arlington',
     radius: 2500,
   },
-  {
-    name: 'Washington–Alexandria Architecture Center',
-    lat: 38.806012,
-    lng: -77.050518,
-    id: 'alexandria',
-    radius: 2500,
-  },
-  {
-    name: 'Academic Building One (Northern VA)',
-    lat: 38.947211,
-    lng: -77.336989,
-    id: 'academic',
-    radius: 3000,
-  },
 ];
 
 // --- Center point for DC area campuses ---
 const MAP_CENTER = [38.85, -77.1] as [number, number];
+// --- ADDED: Campus coordinate lookup for "Get Directions" ---
+const CAMPUS_CENTERS: Record<string, { lat: number; lng: number }> = {
+  academic: { lat: 38.8539, lng: -77.0503 }, // Academic Building One
+  alexandria: { lat: 38.8051, lng: -77.0470 }, // Alexandria Architecture Center
+  arlington: { lat: 38.8869, lng: -77.1022 }, // VT Research Center – Arlington
+};
+// -----------------------------------------------------------
 
 // --- Base map layers ---
 const mapLayers = {
@@ -83,6 +82,8 @@ interface PropertyMapProps {
   };
   selectedCampus?: string | null;
   onCampusChange?: (campusId: string | null) => void;
+  showTransit?: boolean; // <-- Prop from Properties.tsx
+  showAttractions?: boolean; // <-- Prop from Properties.tsx
 }
 
 // --- Safety types/state helpers ---
@@ -96,6 +97,20 @@ const presetWindow = (p: Preset) => {
   return { from, to };
 };
 
+// --- ADDED: Helper for data layer icons ---
+const createDataIcon = (color: string, size: number = 10) => {
+  return L.divIcon({
+    className: 'custom-data-marker',
+    html: `<div style="background-color:${color};width:${size}px;height:${size}px;border-radius:50%;border:1px solid white;box-shadow:0 1px 2px rgba(0,0,0,0.5);"></div>`,
+    iconSize: [size, size],
+    iconAnchor: [size / 2, size / 2],
+  });
+};
+const metroIcon = createDataIcon('#FF4136', 12); // Red for Metro
+const busIcon = createDataIcon('#0074D9', 8); // Blue for Bus
+const attractionIcon = createDataIcon('#2ECC40', 10); // Green for Attraction
+// ------------------------------------------
+
 export const PropertyMap: React.FC<PropertyMapProps> = ({
   properties = [],
   onPropertySelect,
@@ -104,6 +119,8 @@ export const PropertyMap: React.FC<PropertyMapProps> = ({
   filters = {},
   selectedCampus,
   onCampusChange,
+  showTransit, // <-- Get the prop
+  showAttractions, // <-- Get the prop
 }) => {
   // --- Map refs/state ---
   const mapRef = useRef<HTMLDivElement>(null);
@@ -114,12 +131,27 @@ export const PropertyMap: React.FC<PropertyMapProps> = ({
   const vtMarkersRef = useRef<L.Marker[]>([]);
   const referenceMarkersRef = useRef<L.Marker[]>([]);
 
+  // --- ADDED: Refs for data layers ---
+  const transitLayerRef = useRef<L.LayerGroup | null>(null); // For stations and stops
+  const metroLinesLayerRef = useRef<L.LayerGroup | null>(null); // For the colored lines
+  const attractionsLayerRef = useRef<L.LayerGroup | null>(null);
+  const [commute, setCommute] = useState<CommuteRouteResponse['data'] | null>(null);
+  const commuteLayerRef = useRef<L.LayerGroup | null>(null);
+  // ---------------------------------
+
   const [isLoaded, setIsLoaded] = useState(false);
   const [mapProperties, setMapProperties] = useState<PropertyMarker[]>([]);
   const [referenceLocations, setReferenceLocations] = useState<any[]>([]);
   const [currentLayer, setCurrentLayer] = useState<'streets' | 'transit'>('streets');
   const [showVTMarkers, setShowVTMarkers] = useState(true);
   const [showReferenceMarkers, setShowReferenceMarkers] = useState(true);
+
+  // --- ADDED: State for overlay data ---
+  const [transitStations, setTransitStations] = useState<TransitStation[]>([]);
+  const [busStops, setBusStops] = useState<TransitStation[]>([]);
+  const [metroLines, setMetroLines] = useState<MetroLine[]>([]);
+  const [attractions, setAttractions] = useState<Attraction[]>([]);
+  // -------------------------------------
 
   // --- Safety state/refs (from Mohammad) ---
   const [safetyOn, setSafetyOn] = useState(false);
@@ -140,6 +172,30 @@ export const PropertyMap: React.FC<PropertyMapProps> = ({
     // add default base layer
     activeBaseLayerRef.current = mapLayers.streets.addTo(map);
 
+    // Create panes for layering
+    if (!map.getPane('vtPane')) {
+      map.createPane('vtPane');
+      const pane = map.getPane('vtPane');
+      if (pane) (pane.style as any).zIndex = '700'; // VT campuses on top
+    }
+    if (!map.getPane('refPane')) {
+      map.createPane('refPane');
+      const pane = map.getPane('refPane');
+      if (pane) (pane.style as any).zIndex = '650'; // Properties
+    }
+    // --- ADDED: Pane for data overlays ---
+    if (!map.getPane('dataPane')) {
+      map.createPane('dataPane');
+      const pane = map.getPane('dataPane');
+      if (pane) (pane.style as any).zIndex = '600'; // Data layers (transit, attractions)
+    }
+    if (!map.getPane('linePane')) {
+      map.createPane('linePane');
+      const pane = map.getPane('linePane');
+      if (pane) (pane.style as any).zIndex = '500'; // Metro lines (below markers)
+    }
+    // -------------------------------------
+
     // track bbox for safety queries
     const b0 = map.getBounds();
     setBbox([b0.getWest(), b0.getSouth(), b0.getEast(), b0.getNorth()]);
@@ -156,22 +212,80 @@ export const PropertyMap: React.FC<PropertyMapProps> = ({
     };
   }, []);
 
+  // --- MODIFIED: Fetch overlay data ---
+  useEffect(() => {
+    const fetchOverlayData = async () => {
+      try {
+        // Fetch all data points using the correct function
+        const [stationsRes, stopsRes, linesRes] = await Promise.all([
+        fetchTransitStations({ type: 'metro' }),
+        fetchTransitStations({ type: 'bus_stop' }),
+        // fetchAttractions(), // <-- REMOVE THIS LINE
+        fetchMetroLines()
+      ]);
+        
+        if (stationsRes.success) setTransitStations(stationsRes.data);
+        if (stopsRes.success) setBusStops(stopsRes.data);
+     //   if (attractionsRes.success) setAttractions(attractionsRes.data);
+        if (linesRes.success) setMetroLines(linesRes.data); // <-- ADDED
+
+        console.log(`[PropertyMap] Fetched ${stationsRes.data.length} stations, ${stopsRes.data.length} stops, ${linesRes.data.length} lines.`);
+      } catch (error) {
+        console.error("PropertyMap: Error fetching overlay data:", error);
+      }
+    };
+    fetchOverlayData();
+  }, []); // Runs once on load
+  // ---------------------------------
+
   // --- Fetch map data ---
   useEffect(() => {
     const fetchMapData = async () => {
       try {
-        const [propertiesData, referenceData] = await Promise.all([
-          mapAPI.getMapMarkers(filters),
-          mapAPI.getReferenceLocations(),
-        ]);
-        setMapProperties(propertiesData);
-        setReferenceLocations(referenceData);
+        // If caller passed properties, use them and skip backend markers call
+        if (Array.isArray(properties) && properties.length > 0) {
+          setMapProperties(properties as any);
+        } else {
+          // fetch markers with a light retry; if it fails, leave mapProperties empty
+          let propsData: any[] = [];
+          let ok = false;
+          for (let attempt = 0; attempt < 2; attempt++) {
+            try {
+              propsData = await mapAPI.getMapMarkers(filters);
+              ok = true;
+              break;
+            } catch (e) {
+              await new Promise(r => setTimeout(r, 400));
+            }
+          }
+          if (ok && Array.isArray(propsData)) {
+            setMapProperties(propsData);
+          } else {
+            console.warn('[PropertyMap] Skipping markers due to fetch failure; falling back to passed properties');
+            setMapProperties(Array.isArray(properties) ? (properties as any) : []);
+          }
+        }
+
+        // fetch refs with a light retry (handles cold server or transient empty)
+        let refs: any[] = [];
+        for (let attempt = 0; attempt < 2; attempt++) {
+          try {
+            const r = await mapAPI.getReferenceLocations();
+            if (Array.isArray(r)) refs = r;
+            if (refs.length > 0) break;
+          } catch (e) {
+            // ignore to retry
+          }
+          await new Promise(r => setTimeout(r, 500));
+        }
+        setReferenceLocations(refs);
+        console.info(`[PropertyMap] fetched refs: ${Array.isArray(refs) ? refs.length : 0}`);
       } catch (error) {
         console.error('PropertyMap: Error fetching map data:', error);
       }
     };
     fetchMapData();
-  }, [filters]);
+  }, [filters, properties]);
 
   // --- Add VT campus markers ---
   const addVTCampusMarkers = (map: L.Map) => {
@@ -181,12 +295,12 @@ export const PropertyMap: React.FC<PropertyMapProps> = ({
         html: `
           <div style="
             background:#E87722;border:2px solid white;border-radius:50%;
-            width:32px;height:32px;display:flex;align-items:center;justify-content:center;
-            font-weight:bold;color:white;font-size:10px;box-shadow:0 2px 4px rgba(0,0,0,0.3);
+            width:28px;height:28px;display:flex;align-items:center;justify-content:center;
+            color:white;font-size:10px;font-weight:700;box-shadow:0 2px 4px rgba(0,0,0,0.3);
           ">VT</div>
         `,
-        iconSize: [32, 32],
-        iconAnchor: [16, 16],
+        iconSize: [28, 28],
+        iconAnchor: [14, 14],
       });
 
       const marker = L.marker([campus.lat, campus.lng], { icon: vtIcon })
@@ -205,38 +319,57 @@ export const PropertyMap: React.FC<PropertyMapProps> = ({
   const addReferenceLocationMarkers = (map: L.Map) => {
     referenceLocations.forEach((location) => {
       const getIcon = (type: string) => {
-        const color =
-          type === 'university' ? '#3B82F6' : type === 'transit' ? '#10B981' : '#8B5CF6';
-        return L.divIcon({
-          className: 'custom-reference-marker',
-          html: `
+        const name = String(location.name || '').trim().toLowerCase();
+        const isVT = name.includes('virginia tech') || name.startsWith('vt ') || [
+          'virginia tech alexandria center',
+          'virginia tech arlington center',
+          'virginia tech innovation campus',
+          'vt research center',
+          'washington–alexandria architecture center',
+          'washington-alexandria architecture center',
+        ].includes(name);
+        const color = isVT ? '#E87722' : (type === 'university' ? '#3B82F6' : type === 'transit' ? '#10B981' : '#8B5CF6');
+        return {
+          isVT, icon: L.divIcon({
+            className: 'custom-reference-marker',
+            html: `
             <div style="
               background:${color};border:2px solid white;border-radius:50%;
               width:24px;height:24px;display:flex;align-items:center;justify-content:center;
               color:white;font-size:10px;box-shadow:0 2px 4px rgba(0,0,0,0.3);
             ">
-              ${type === 'university' ? 'U' : type === 'transit' ? 'T' : 'E'}
+              ${isVT ? 'VT' : (type === 'university' ? 'U' : type === 'transit' ? 'T' : 'E')}
             </div>
           `,
-          iconSize: [24, 24],
-          iconAnchor: [12, 12],
-        });
+            iconSize: [24, 24],
+            iconAnchor: [12, 12],
+          })
+        };
       };
 
-      const marker = L.marker([location.latitude, location.longitude], {
-        icon: getIcon(location.type),
+      const lat = Number((location as any).latitude);
+      const lng = Number((location as any).longitude);
+      if (!isFinite(lat) || !isFinite(lng)) return;
+      const iconData = getIcon((location as any).type);
+      // Exclude VT campuses from references; they are rendered separately via VT pins
+      if (iconData.isVT) return;
+      const marker = L.marker([lat, lng], {
+        icon: iconData.icon,
+        pane: 'refPane' as any,
+        zIndexOffset: 800,
       })
         .addTo(map)
         .bindPopup(`
           <div class="p-2">
             <h3 class="font-bold">${location.name}</h3>
-            <p class="text-sm text-gray-600">${location.type}</p>
+            <p class="text-sm text-gray-600">${location.type || 'reference'}</p>
             ${location.address ? `<p class="text-xs text-gray-500">${location.address}</p>` : ''}
           </div>
         `);
 
       referenceMarkersRef.current.push(marker);
     });
+    console.info(`[PropertyMap] Plotted references: ${referenceMarkersRef.current.length}`);
   };
 
   // --- Create/refresh property markers ---
@@ -253,7 +386,43 @@ export const PropertyMap: React.FC<PropertyMapProps> = ({
 
     const isDetailPage = propertiesToShow.length === 1;
 
-    propertiesToShow.forEach((property) => {
+    // Campus distance filter (~5 miles) if a campus is selected
+    const campusFilter: any = (filters as any)?.campus ?? selectedCampus ?? null;
+    const normalizeCampus = (v: any): 'innovation' | 'alexandria' | 'research' | null => {
+      if (!v || v === 'All Campuses') return null;
+      const s = String(v).toLowerCase().replace(/\u2013|\u2014|–|—/g, '-'); // normalize dashes
+      if (s.includes('innovation') || s.includes('academic building one') || s.includes('ab1') || s === 'innovation') return 'innovation';
+      if (s.includes('alexandria') || s.includes('architecture') || s === 'alexandria') return 'alexandria';
+      if (s.includes('research') || s.includes('arlington') || s === 'research') return 'research';
+      return null;
+    };
+    const key = normalizeCampus(campusFilter);
+    const CENTERS: Record<'innovation' | 'alexandria' | 'research', { lat: number; lng: number }> = {
+      innovation: { lat: 38.8539, lng: -77.0503 },
+      alexandria: { lat: 38.8051, lng: -77.0470 },
+      research: { lat: 38.8869, lng: -77.1022 },
+    };
+    const R = 3958.8; // miles
+    const distMiles = (aLat: number, aLng: number, bLat: number, bLng: number) => {
+      const toRad = (d: number) => d * Math.PI / 180;
+      const dLat = toRad(bLat - aLat);
+      const dLng = toRad(bLng - aLng);
+      const s = Math.sin(dLat / 2) ** 2 + Math.cos(toRad(aLat)) * Math.cos(toRad(bLat)) * Math.sin(dLng / 2) ** 2;
+      return 2 * R * Math.asin(Math.min(1, Math.sqrt(s)));
+    };
+    const radiusMiles = 2;
+
+    const filteredProps = key ? propertiesToShow.filter(p => {
+      const c = CENTERS[key];
+      const lat = Number((p as any).latitude);
+      const lng = Number((p as any).longitude);
+      if (!isFinite(lat) || !isFinite(lng)) return false;
+      return distMiles(c.lat, c.lng, lat, lng) <= radiusMiles;
+    }) : propertiesToShow;
+
+    if (key) console.info(`[PropertyMap] Campus=${key}, radius=${radiusMiles}mi, results=${filteredProps.length}`);
+
+    filteredProps.forEach((property) => {
       if (!property.latitude || !property.longitude) return;
 
       const isSelected = selectedProperty?.id === property.id;
@@ -311,16 +480,25 @@ export const PropertyMap: React.FC<PropertyMapProps> = ({
               </span>
             </div>
             ${(property as any).distanceFromCampus
-              ? `<div class="text-xs text-gray-600 mb-2">📍 ${(property as any).distanceFromCampus} miles from ${(property as any).nearestCampus?.name || 'VT Campus'}</div>`
-              : ''
-            }
+            ? `<div class="text-xs text-gray-600 mb-2">📍 ${(property as any).distanceFromCampus} miles from ${(property as any).nearestCampus?.name || 'VT Campus'}</div>`
+            : ''
+          }
             <button
-              onclick="selectProperty('${property.id}')"
+              onclick="viewProperty('${property.id}')"
               class="w-full bg-orange-500 text-white px-3 py-2 rounded text-sm hover:bg-orange-600 transition-colors"
             >
               View Details
             </button>
-          </div>
+            
+            ${showTransit ? `
+              <button
+                onclick="getDirections(${property.latitude}, ${property.longitude})"
+                class="w-full bg-blue-500 text-white px-3 py-2 rounded text-sm hover:bg-blue-600 transition-colors mt-2"
+              >
+                Get Directions
+              </button>
+            ` : ''}
+            </div>
         `);
 
       marker.on('click', () => {
@@ -337,9 +515,9 @@ export const PropertyMap: React.FC<PropertyMapProps> = ({
     });
 
     // fit bounds logic
-    if (propertiesToShow.length > 0 && propertiesToShow.some((p) => p.latitude && p.longitude)) {
+    if (filteredProps.length > 0 && filteredProps.some((p) => p.latitude && p.longitude)) {
       if (isDetailPage) {
-        const property = propertiesToShow[0];
+        const property = filteredProps[0];
         map.setView([property.latitude!, property.longitude!], 16);
         setTimeout(() => {
           if (mapInstanceRef.current) {
@@ -352,12 +530,33 @@ export const PropertyMap: React.FC<PropertyMapProps> = ({
       }
     }
 
-    // global helper for popup button
+    // global helper for popup buttons
     (window as any).selectProperty = (propertyId: string) => {
-      const property = propertiesToShow.find((p) => p.id === propertyId);
+      const property = filteredProps.find((p) => p.id === propertyId);
       if (property && onPropertySelect) onPropertySelect(property as any);
     };
-  }, [mapProperties, properties, selectedProperty, isLoaded, onPropertySelect]);
+    (window as any).viewProperty = (propertyId: string) => {
+      // navigate to details route; fallback to selection if id missing
+      if (propertyId) {
+        window.location.href = `/properties/${propertyId}`;
+      } else {
+        (window as any).selectProperty?.(propertyId);
+      }
+    };
+    
+    // --- MODIFIED: "Get Directions" now uses the campus filter ---
+    (window as any).getDirections = (lat: number, lng: number) => {
+      // Use the 'filters' prop which contains the selected campus
+      const selectedCampusKey = (filters as any)?.campus ?? selectedCampus ?? 'arlington';
+      const destination = CAMPUS_CENTERS[selectedCampusKey] || CAMPUS_CENTERS.arlington;
+      const destinationCoords = `${destination.lat},${destination.lng}`;
+
+      const url = `https://www.google.com/maps/dir/?api=1&origin=${lat},${lng}&destination=${destinationCoords}&travelmode=transit`;
+      window.open(url, '_blank');
+    };
+    // --- End of modification ---
+
+  }, [mapProperties, properties, selectedProperty, isLoaded, onPropertySelect, filters, selectedCampus, showTransit]); // Added showTransit
 
   // --- Detail page re-center safeguard ---
   useEffect(() => {
@@ -390,7 +589,225 @@ export const PropertyMap: React.FC<PropertyMapProps> = ({
     next.addTo(map);
     activeBaseLayerRef.current = next;
   }, [currentLayer, isLoaded]);
+  
+  // --- MODIFIED: Toggle Transit data layer ---
+  useEffect(() => {
+    const map = mapInstanceRef.current;
+    if (!map || !isLoaded) return;
 
+    // Always set base layer based on prop
+    setCurrentLayer(showTransit ? 'transit' : 'streets');
+
+    // Clear previous marker layers
+    if (transitLayerRef.current) {
+      map.removeLayer(transitLayerRef.current);
+      transitLayerRef.current = null;
+    }
+    if (metroLinesLayerRef.current) {
+      map.removeLayer(metroLinesLayerRef.current);
+      metroLinesLayerRef.current = null;
+    }
+
+    // If toggled on, add new layers
+    if (showTransit) {
+      // 1. Add Station and Stop Markers
+      const stations = transitStations.map(station => {
+        return L.marker([station.latitude, station.longitude], {
+          icon: metroIcon,
+          pane: 'dataPane'
+        }).bindPopup(`<b>${station.name}</b><br>Metro Station`);
+      });
+      
+      const stops = busStops.map(stop => {
+         return L.marker([stop.latitude, stop.longitude], {
+          icon: busIcon,
+          pane: 'dataPane'
+        }).bindPopup(`<b>${stop.name}</b><br>Bus Stop`);
+      });
+
+      const stationLayerGroup = L.layerGroup([...stations, ...stops]);
+      stationLayerGroup.addTo(map);
+      transitLayerRef.current = stationLayerGroup;
+      
+      // 2. Add Metro Lines
+      try {
+        const linesLayer = L.geoJSON(undefined, {
+          pane: 'linePane', // Draw lines below markers
+          style: (feature) => {
+            return {
+              color: feature?.properties.color || '#888888',
+              weight: 4,
+              opacity: 0.7
+            };
+          },
+          onEachFeature: (feature, layer) => {
+            layer.bindPopup(feature.properties.name);
+          }
+        });
+
+        let linesDrawn = 0;
+        metroLines.forEach(line => {
+          if (line.route_path && (line.route_path.type === "MultiLineString" || line.route_path.type === "LineString")) {
+            // Re-format as a valid GeoJSON Feature
+            const lineFeature = {
+              "type": "Feature",
+              "properties": {
+                "name": line.route_name,
+                "color": line.line_color || '#888888'
+              },
+              "geometry": line.route_path
+            };
+            linesLayer.addData(lineFeature as any);
+            linesDrawn++;
+          }
+        });
+        
+        console.log(`[PropertyMap] Added ${linesDrawn} metro lines to map.`);
+        linesLayer.addTo(map);
+        metroLinesLayerRef.current = linesLayer;
+
+      } catch (e) {
+        console.error("Failed to draw Metro lines:", e);
+      }
+    }
+  }, [showTransit, isLoaded, transitStations, busStops, metroLines]);
+  
+  // --- MODIFIED: Toggle Attractions data layer ---
+  useEffect(() => {
+    const map = mapInstanceRef.current;
+    if (!map || !isLoaded) return;
+
+    // Clear previous layer
+    if (attractionsLayerRef.current) {
+      map.removeLayer(attractionsLayerRef.current);
+      attractionsLayerRef.current = null;
+    }
+    setAttractions([]);
+    // If toggled on, add new layer
+    if (showAttractions && selectedProperty) {
+    console.log(`[PropertyMap] Fetching attractions near ${selectedProperty.id}`);
+    fetchNearbyAttractions(selectedProperty.id)
+      .then(res => {
+        if (res.success && res.data.length > 0) {
+          setAttractions(res.data); // Store them
+
+          // Draw markers
+          const attractionMarkers = res.data.map(attraction => {
+            return L.marker([attraction.latitude, attraction.longitude], {
+              icon: attractionIcon,
+              pane: 'dataPane'
+            }).bindPopup(`<b>${attraction.name}</b><br>${attraction.category}`);
+          });
+
+          const layerGroup = L.layerGroup(attractionMarkers);
+          layerGroup.addTo(map);
+          attractionsLayerRef.current = layerGroup;
+        } else {
+          console.log("[PropertyMap] No nearby attractions found for this property.");
+        }
+      })
+      .catch(err => {
+        console.error("Failed to fetch nearby attractions:", err);
+      });
+  }
+  // If the toggle is on but NO property is selected, do nothing.
+  // (This fulfills your request to only show attractions *near a property*)
+
+}, [showAttractions, selectedProperty, isLoaded]);
+  // ------------------------------------------
+// --- ADDED: Fetch Commute Route ---
+  useEffect(() => {
+    const map = mapInstanceRef.current;
+    if (!map) return;
+
+    // Clear existing commute layer
+    if (commuteLayerRef.current) {
+      map.removeLayer(commuteLayerRef.current);
+      commuteLayerRef.current = null;
+    }
+
+    // Get selected campus key from filters
+    const campusKey = (filters as any)?.campus ?? selectedCampus ?? null;
+
+    // Don't draw if no campus or property is selected
+    if (!selectedProperty || !campusKey) {
+      setCommute(null); // Clear commute data
+      return;
+    }
+
+    // Find the campus coordinates
+    const campusCenter = CAMPUS_CENTERS[campusKey as keyof typeof CAMPUS_CENTERS];
+    if (!campusCenter) {
+      console.warn(`[PropertyMap] Could not find campus center for key: ${campusKey}`);
+      setCommute(null);
+      return;
+    }
+
+    console.log(`[PropertyMap] Fetching commute from ${selectedProperty.name} to ${campusKey}`);
+    
+    // Fetch the commute route
+    fetchCommuteRoute(
+      selectedProperty.latitude!,
+      selectedProperty.longitude!,
+      campusCenter.lat,
+      campusCenter.lng
+    )
+    .then(res => {
+      setCommute(res.data); // Store route data in state
+    })
+    .catch(err => {
+      console.error("Failed to fetch commute route:", err);
+      setCommute(null);
+    });
+
+  }, [selectedProperty, selectedCampus, filters]); // Runs when property or campus filter changes
+
+  // --- ADDED: Render Commute Route ---
+  useEffect(() => {
+    const map = mapInstanceRef.current;
+    // Only render if we have a map and commute data
+    if (!map || !commute || !selectedProperty) return;
+
+    // Clear previous layer just in case
+    if (commuteLayerRef.current) {
+      map.removeLayer(commuteLayerRef.current);
+    }
+
+    const commuteLayer = L.layerGroup();
+
+    // 1. Get positions
+    const propertyPos: [number, number] = [selectedProperty.latitude!, selectedProperty.longitude!];
+    const fromStationPos: [number, number] = [commute.fromStation.station_lat, commute.fromStation.station_lng];
+    const toStationPos: [number, number] = [commute.toStation.station_lat, commute.toStation.station_lng];
+
+    // Find campus position again
+    const campusKey = (filters as any)?.campus ?? selectedCampus ?? 'arlington';
+    const campusCenter = CAMPUS_CENTERS[campusKey as keyof typeof CAMPUS_CENTERS] || CAMPUS_CENTERS.arlington;
+    const campusPos: [number, number] = [campusCenter.lat, campusCenter.lng];
+
+    // 2. Create polylines
+    // Property -> Start Station (Pink, dashed)
+    L.polyline([propertyPos, fromStationPos], { color: '#D61A5F', dashArray: '5, 10', weight: 2, pane: 'dataPane' }).addTo(commuteLayer);
+    // Station -> Station (Blue, solid)
+    L.polyline([fromStationPos, toStationPos], { color: '#007ACC', weight: 4, opacity: 0.8, pane: 'linePane' })
+      .bindTooltip(`<b>Metro: ${commute.commute.travelTime} mins</b><br>${commute.fromStation.station_name} to ${commute.toStation.station_name}`, { sticky: true })
+      .addTo(commuteLayer);
+    // End Station -> Campus (Orange, dashed)
+    L.polyline([toStationPos, campusPos], { color: '#E87722', dashArray: '5, 10', weight: 2, pane: 'dataPane' }).addTo(commuteLayer);
+      
+    // 3. Add station markers
+    L.marker(fromStationPos, { icon: createDataIcon('#007ACC', 12), pane: 'dataPane', zIndexOffset: 200 })
+      .bindPopup(`<b>Start:</b> ${commute.fromStation.station_name}`)
+      .addTo(commuteLayer);
+    L.marker(toStationPos, { icon: createDataIcon('#E87722', 12), pane: 'dataPane', zIndexOffset: 200 })
+      .bindPopup(`<b>End:</b> ${commute.toStation.station_name}`)
+      .addTo(commuteLayer);
+
+    // 4. Add layer to map
+    commuteLayer.addTo(map);
+    commuteLayerRef.current = commuteLayer;
+
+  }, [commute, selectedProperty, filters, selectedCampus]); // Runs when commute data or context changes
   // --- Toggle VT markers ---
   useEffect(() => {
     const map = mapInstanceRef.current;
@@ -401,16 +818,103 @@ export const PropertyMap: React.FC<PropertyMapProps> = ({
     if (showVTMarkers) addVTCampusMarkers(map);
   }, [showVTMarkers, isLoaded]);
 
+  // --- Render VT reference locations in orange; controlled by VT toggle and Campus filter ---
+  useEffect(() => {
+    const map = mapInstanceRef.current;
+    if (!map || !isLoaded) return;
+    if (!showVTMarkers) return;
+
+    // Ensure VT pane exists (avoids appendChild on undefined)
+    if (!map.getPane('vtPane')) {
+      map.createPane('vtPane');
+      const pane = map.getPane('vtPane');
+      if (pane) (pane.style as any).zIndex = '700';
+    }
+
+    // Remove previously added VT ref markers
+    vtMarkersRef.current.forEach((m) => map.removeLayer(m));
+    vtMarkersRef.current = [];
+
+    const vtIcon = L.divIcon({
+      className: 'custom-vt-marker',
+      html: `
+        <div style="
+          background:#E87722;border:2px solid white;border-radius:50%;
+          width:28px;height:28px;display:flex;align-items:center;justify-content:center;
+          color:white;font-size:10px;font-weight:700;box-shadow:0 2px 4px rgba(0,0,0,0.3);
+        ">VT</div>
+      `,
+      iconSize: [28, 28],
+      iconAnchor: [14, 14],
+    });
+
+    // HARD-CODED VT POINTS (bypass API)
+    const vtPoints: Array<{ key: 'innovation' | 'alexandria' | 'research'; name: string; lat: number; lng: number; address?: string }> = [
+      { key: 'innovation', name: 'Academic Building One (Northern VA)', lat: 38.8539, lng: -77.0503 },
+      { key: 'alexandria', name: 'Washington–Alexandria Architecture Center', lat: 38.8051, lng: -77.0470, address: '1021 Prince St, Alexandria, VA' },
+      { key: 'research', name: 'VT Research Center – Arlington', lat: 38.8869, lng: -77.1022, address: '900 N Glebe Rd, Arlington, VA' },
+    ];
+
+    const campusFilter: any = (filters as any)?.campus ?? selectedCampus ?? null;
+    const normalizeCampus = (v: any): 'innovation' | 'alexandria' | 'research' | null => {
+      if (!v || v === 'All Campuses') return null;
+      const s = String(v).toLowerCase();
+      if (s.includes('academic') || s.includes('innovation')) return 'innovation';
+      if (s.includes('alexandria') || s.includes('architecture')) return 'alexandria';
+      if (s.includes('research') || s.includes('arlington')) return 'research';
+      return null;
+    };
+    const selectedKey = normalizeCampus(campusFilter);
+
+    vtPoints
+      .filter(p => !selectedKey || p.key === selectedKey)
+      .forEach((p) => {
+        const marker = L.marker([p.lat, p.lng], { icon: vtIcon, pane: 'vtPane' as any, zIndexOffset: 1000 })
+          .addTo(map)
+          .bindPopup(`
+            <div class="p-2">
+              <h3 class="font-bold text-orange-600">${p.name}</h3>
+              ${p.address ? `<p class="text-xs text-gray-600">${p.address}</p>` : ''}
+            </div>
+          `);
+        vtMarkersRef.current.push(marker);
+      });
+  }, [referenceLocations, isLoaded, showVTMarkers, filters, selectedCampus]);
+
   // --- Toggle reference markers ---
   useEffect(() => {
     const map = mapInstanceRef.current;
     if (!map || !isLoaded) return;
 
+    console.info(`[PropertyMap] Ref toggle: ${showReferenceMarkers}, refs in state=${referenceLocations.length}`);
+
+    // remove markers we created and any lingering reference markers on the map
     referenceMarkersRef.current.forEach((m) => map.removeLayer(m));
     referenceMarkersRef.current = [];
-    if (showReferenceMarkers && referenceLocations.length > 0) {
-      addReferenceLocationMarkers(map);
-    }
+    map.eachLayer((layer: any) => {
+      if (layer instanceof (L as any).Marker && layer._icon?.className?.includes('custom-reference-marker')) {
+        map.removeLayer(layer);
+      }
+    });
+
+    const ensureAndDraw = async () => {
+      let refs = referenceLocations;
+      if (showReferenceMarkers && refs.length === 0) {
+        try {
+          refs = await mapAPI.getReferenceLocations();
+          setReferenceLocations(refs);
+          console.info(`[PropertyMap] re-fetched refs on toggle: ${refs.length}`);
+        } catch (e) {
+          console.error('PropertyMap: failed to fetch refs on toggle', e);
+          refs = [];
+        }
+      }
+      if (showReferenceMarkers && refs.length > 0) {
+        addReferenceLocationMarkers(map);
+      }
+    };
+
+    ensureAndDraw();
   }, [showReferenceMarkers, referenceLocations, isLoaded]);
 
   // --- Safety overlay render/update ---
@@ -477,11 +981,10 @@ export const PropertyMap: React.FC<PropertyMapProps> = ({
               <div style="min-width:180px">
                 <div style="font-weight:600">${f.properties?.type ?? 'Incident'}</div>
                 <div style="font-size:12px;color:#555">${new Date(f.properties?.occurred_at).toLocaleString()}</div>
-                ${
-                  f.properties?.details?.BLOCK
-                    ? `<div style="font-size:12px;margin-top:4px">${f.properties.details.BLOCK}</div>`
-                    : ''
-                }
+                ${f.properties?.details?.BLOCK
+                ? `<div style="font-size:12px;margin-top:4px">${f.properties.details.BLOCK}</div>`
+                : ''
+              }
                 ${f.properties?.source ? `<div style="font-size:11px;color:#777;margin-top:4px">Source: ${f.properties.source}</div>` : ''}
               </div>
             `)
@@ -535,17 +1038,15 @@ export const PropertyMap: React.FC<PropertyMapProps> = ({
               <span className="text-xs font-medium text-gray-700">Layers:</span>
               <button
                 onClick={() => setCurrentLayer('streets')}
-                className={`px-2 py-1 text-xs rounded transition-colors ${
-                  currentLayer === 'streets' ? 'bg-orange-500 text-white' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-                }`}
+                className={`px-2 py-1 text-xs rounded transition-colors ${currentLayer === 'streets' ? 'bg-orange-500 text-white' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                  }`}
               >
                 Streets
               </button>
               <button
                 onClick={() => setCurrentLayer('transit')}
-                className={`px-2 py-1 text-xs rounded transition-colors ${
-                  currentLayer === 'transit' ? 'bg-orange-500 text-white' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-                }`}
+                className={`px-2 py-1 text-xs rounded transition-colors ${currentLayer === 'transit' ? 'bg-orange-500 text-white' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                  }`}
               >
                 Transit
               </button>
@@ -579,9 +1080,8 @@ export const PropertyMap: React.FC<PropertyMapProps> = ({
               <span className="text-xs font-medium text-gray-700">VT:</span>
               <button
                 onClick={() => setShowVTMarkers((v) => !v)}
-                className={`px-2 py-1 text-xs rounded transition-colors ${
-                  showVTMarkers ? 'bg-purple-500 text-white' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-                }`}
+                className={`px-2 py-1 text-xs rounded transition-colors ${showVTMarkers ? 'bg-purple-500 text-white' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                  }`}
               >
                 {showVTMarkers ? 'Hide' : 'Show'}
               </button>
@@ -590,9 +1090,8 @@ export const PropertyMap: React.FC<PropertyMapProps> = ({
               <span className="text-xs font-medium text-gray-700">Ref:</span>
               <button
                 onClick={() => setShowReferenceMarkers((v) => !v)}
-                className={`px-2 py-1 text-xs rounded transition-colors ${
-                  showReferenceMarkers ? 'bg-green-500 text-white' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-                }`}
+                className={`px-2 py-1 text-xs rounded transition-colors ${showReferenceMarkers ? 'bg-green-500 text-white' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                  }`}
               >
                 {showReferenceMarkers ? 'Hide' : 'Show'}
               </button>
@@ -627,17 +1126,17 @@ export const PropertyMap: React.FC<PropertyMapProps> = ({
         </div>
       </div>
 
-{/* Safety Controls */}
-<div className="absolute bottom-4 left-4 z-[120] pointer-events-auto">
-  <SafetyControls
-    enabled={safetyOn}
-    onToggle={setSafetyOn}
-    preset={preset}
-    onPresetChange={setPreset}
-    mode={safetyMode === 'heat' ? 'heat' : 'clusters'}
-    onModeChange={(m) => setSafetyMode(m === 'heat' ? 'heat' : 'points')}
-  />
-</div>
+      {/* Safety Controls */}
+      <div className="absolute bottom-4 left-4 z-[120] pointer-events-auto">
+        <SafetyControls
+          enabled={safetyOn}
+          onToggle={setSafetyOn}
+          preset={preset}
+          onPresetChange={setPreset}
+          mode={safetyMode === 'heat' ? 'heat' : 'clusters'}
+          onModeChange={(m) => setSafetyMode(m === 'heat' ? 'heat' : 'points')}
+        />
+      </div>
 
 
       {/* Badges (counts) */}

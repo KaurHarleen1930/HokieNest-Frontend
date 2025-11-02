@@ -1,6 +1,25 @@
-import { Resend } from 'resend';
+import nodemailer from 'nodemailer';
 
-const resend = new Resend(process.env.RESEND_API_KEY);
+// Gmail SMTP transporter (use app password)
+const smtpUser = process.env.SMTP_USERNAME; // e.g., vthokienest@gmail.com
+const smtpPass = process.env.SMTP_PASSWORD?.trim(); // Gmail App Password (trim spaces)
+const smtpFrom = process.env.SMTP_FROM || (smtpUser ? `HokieNest <${smtpUser}>` : 'HokieNest <no-reply@hokienest.local>');
+
+if (!smtpUser || !smtpPass) {
+  console.warn('⚠️  SMTP_USERNAME or SMTP_PASSWORD not set - emails will fail');
+}
+
+const transporter = nodemailer.createTransport({
+  host: process.env.SMTP_HOST || 'smtp.gmail.com',
+  port: Number(process.env.SMTP_PORT || 465),
+  secure: String(process.env.SMTP_SECURE || 'true') === 'true',
+  auth: smtpUser && smtpPass ? { 
+    user: smtpUser, 
+    pass: smtpPass 
+  } : undefined,
+  debug: process.env.NODE_ENV === 'development', // Enable debug logging in dev
+  logger: process.env.NODE_ENV === 'development', // Log to console in dev
+});
 
 export const sendVerificationEmail = async (
   email: string,
@@ -10,9 +29,9 @@ export const sendVerificationEmail = async (
   const verificationUrl = `${process.env.FRONTEND_URL || 'http://localhost:8080'}/verify-email?token=${verificationToken}`;
 
   try {
-    const { data, error } = await resend.emails.send({
-      from: 'HokieNest <onboarding@resend.dev>',
-      to: [email],
+    const info = await transporter.sendMail({
+      from: smtpFrom,
+      to: email,
       subject: 'Verify your HokieNest account',
       html: `
         <!DOCTYPE html>
@@ -59,15 +78,11 @@ export const sendVerificationEmail = async (
           </body>
         </html>
       `,
+      text: `Welcome to HokieNest!\n\nVisit the link to verify your email: ${verificationUrl}`,
     });
 
-    if (error) {
-      console.error('❌ Error sending verification email:', error);
-      throw error;
-    }
-
-    console.log('✅ Verification email sent successfully:', data);
-    return { success: true, data };
+    console.log('✅ Verification email sent:', info.messageId);
+    return { success: true, data: { messageId: info.messageId } };
   } catch (error) {
     console.error('❌ Failed to send verification email:', error);
     throw error;
@@ -82,9 +97,9 @@ export const sendPasswordResetEmail = async (
   const resetUrl = `${process.env.FRONTEND_URL || 'http://localhost:5174'}/reset-password?token=${resetToken}`;
 
   try {
-    const { data, error } = await resend.emails.send({
-      from: 'HokieNest <onboarding@resend.dev>',
-      to: [email],
+    const info = await transporter.sendMail({
+      from: smtpFrom,
+      to: email,
       subject: 'Reset your HokieNest password',
       html: `
         <!DOCTYPE html>
@@ -139,17 +154,37 @@ export const sendPasswordResetEmail = async (
           </body>
         </html>
       `,
+      text: `Password reset requested. Use this link to reset your password: ${resetUrl}`,
     });
 
-    if (error) {
-      console.error('❌ Error sending password reset email:', error);
-      throw error;
-    }
-
-    console.log('✅ Password reset email sent successfully:', data);
-    return { success: true, data };
+    console.log('✅ Password reset email sent:', info.messageId);
+    return { success: true, data: { messageId: info.messageId } };
   } catch (error) {
     console.error('❌ Failed to send password reset email:', error);
+    throw error;
+  }
+};
+
+// Send a generic/raw email with provided subject and HTML/text body
+export const sendRawEmail = async (
+  email: string,
+  subject: string,
+  body: { html?: string; text?: string }
+) => {
+  try {
+    const fallbackText = body.text ?? (body.html ? body.html.replace(/<[^>]+>/g, '') : '');
+    const info = await transporter.sendMail({
+      from: smtpFrom,
+      to: email,
+      subject,
+      html: body.html,
+      text: fallbackText,
+    });
+
+    console.log('✅ Email sent:', info.messageId);
+    return { success: true, data: { messageId: info.messageId } };
+  } catch (error) {
+    console.error('❌ Failed to send email:', error);
     throw error;
   }
 };
