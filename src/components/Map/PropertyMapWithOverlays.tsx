@@ -1,38 +1,56 @@
 // src/components/Map/PropertyMapWithOverlays.tsx
 import React, { useState, useEffect } from 'react';
 import { MapContainer, TileLayer, Marker, Popup, useMap, Circle } from 'react-leaflet';
-import { Icon, DivIcon } from 'leaflet';
+import { DivIcon } from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { Utensils, Wine, Coffee, Train, MapPin } from 'lucide-react';
+import { Utensils, Wine, Coffee, Train, Bus, MapPin, Building } from 'lucide-react';
+import { renderToStaticMarkup } from 'react-dom/server';
 
-// --- MODIFIED: Replaced the default "brown box" icon ---
-const DefaultIcon = new DivIcon({
+// --- FIX: Fix for default Leaflet icon ---
+import L from 'leaflet';
+delete (L.Icon.Default.prototype as any)._getIconUrl;
+L.Icon.Default.mergeOptions({
+  iconRetinaUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-icon-2x.png',
+  iconUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-icon.png',
+  shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-shadow.png',
+});
+// --- END FIX ---
+
+// --- NEW: Added constant for metro line colors ---
+const METRO_LINE_COLORS: Record<string, string> = {
+  RD: '#BE123C', // Red
+  BL: '#007ACC', // Blue
+  YL: '#FCD116', // Yellow
+  OR: '#F59E0B', // Orange
+  SV: '#A0A0A0', // Silver (adjusted for visibility)
+  GR: '#059669', // Green
+  Metro: '#5A6370', // Default Gray
+};
+// --- END NEW ---
+
+// --- MODIFIED: Replaced the default "H" icon with a building icon ---
+const propertyIcon = new DivIcon({
   className: 'custom-property-marker-main',
-  html: `
-    <div style="
-      background-color: #630031; /* VT Maroon */
-      color: white;
-      font-size: 18px;
-      font-weight: bold;
-      font-family: sans-serif;
-      width: 36px;
-      height: 36px;
-      border-radius: 50% 50% 50% 0;
-      transform: rotate(-45deg);
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      border: 3px solid white;
-      box-shadow: 0 2px 5px rgba(0,0,0,0.4);
-    ">
-      <span style="transform: rotate(45deg);">H</span>
+  html: renderToStaticMarkup(
+    <div style={{
+      backgroundColor: '#6366F1', // Indigo
+      width: '36px',
+      height: '36px',
+      borderRadius: '50%',
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'center',
+      border: '3px solid white',
+      boxShadow: '0 2px 5px rgba(0,0,0,0.4)',
+    }}>
+      <Building size={18} color="white" />
     </div>
-  `,
+  ),
   iconSize: [36, 36],
-  iconAnchor: [18, 36], // Point of the "teardrop"
-  popupAnchor: [0, -38]
+  iconAnchor: [18, 18],
+  popupAnchor: [0, -20]
 });
 // --- END OF MODIFICATION ---
 
@@ -45,11 +63,12 @@ interface PropertyMapWithOverlaysProps {
   onMarkerClick?: (type: string, id: string) => void;
 }
 
+// --- MODIFIED: Updated types to match backend data ---
 interface Attraction {
   id: string;
   name: string;
   address: string;
-  category: string;
+  category: string; // 'restaurant', 'bar', 'cafe', etc.
   rating?: number;
   latitude: number;
   longitude: number;
@@ -59,43 +78,47 @@ interface Attraction {
 interface TransitStation {
   id: string;
   name: string;
-  station_type: string;
+  station_type: string; // 'metro' or 'bus_stop'
   latitude: number;
   longitude: number;
-  lines?: string[];
+  lines?: string[]; // e.g., ['BL', 'YL']
   distance_miles: number;
 }
+// --- END OF MODIFICATION ---
 
-// Simpler, smaller custom marker icons
-const createCustomIcon = (iconText: string, color: string) => {
-  return new DivIcon({
-    className: 'custom-marker',
-    html: `
-      <div style="
-        background-color: ${color};
-        width: 28px;
-        height: 28px;
-        border-radius: 50%;
-        border: 2px solid white;
-        box-shadow: 0 1px 3px rgba(0,0,0,0.3);
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        font-size: 14px;
-      ">
-        ${iconText}
-      </div>
-    `,
+// --- NEW: Replaced simple icon with advanced SVG icon factory ---
+const createCustomIcon = (color: string, icon: React.ReactElement) => {
+  const iconHtml = renderToStaticMarkup(
+    React.cloneElement(icon, { size: 14, color: 'white' })
+  );
+
+  return L.divIcon({
+    className: 'custom-div-icon',
+    html: `<div style="background-color: ${color}; width: 28px; height: 28px; border-radius: 50%; display: flex; align-items: center; justify-content: center; border: 2px solid white; box-shadow: 0 2px 4px rgba(0,0,0,0.3);">
+      ${iconHtml}
+    </div>`,
     iconSize: [28, 28],
     iconAnchor: [14, 14],
-    popupAnchor: [0, -14]
+    popupAnchor: [0, -14],
   });
 };
 
-const restaurantIcon = createCustomIcon('🍽️', '#f97316'); // orange
-const barIcon = createCustomIcon('🍷', '#8b5cf6'); // purple
-const cafeIcon = createCustomIcon('☕', '#10b981'); // green
-const transitIcon = createCustomIcon('🚇', '#3b82f6'); // blue
+// --- NEW: Special icon function for Metro stations ---
+const getMetroIcon = (lines: string[] = []) => {
+  // Use the first line for color, or default
+  const primaryLine = lines.find(line => METRO_LINE_COLORS[line]) || 'Metro';
+  const color = METRO_LINE_COLORS[primaryLine] || METRO_LINE_COLORS.Metro;
+  
+  return createCustomIcon(color, <Train />);
+};
+
+// --- NEW: Icon definitions ---
+const restaurantIcon = createCustomIcon('#EA580C', <Utensils />); // Orange
+const barIcon = createCustomIcon('#DB2777', <Wine />); // Pink
+const cafeIcon = createCustomIcon('#78350F', <Coffee />); // Brown
+const busIcon = createCustomIcon('#0284C7', <Bus />); // Sky
+const attractionIcon = createCustomIcon('#65A30D', <MapPin />); // Lime
+// --- END NEW ---
 
 
 export default function PropertyMapWithOverlays({
@@ -112,14 +135,16 @@ export default function PropertyMapWithOverlays({
     restaurants: true,
     bars: true,
     cafes: true,
-    transit: true
+    attractions: true, // Added for "other"
+    metro: true,       // Split transit
+    bus: true,         // Split transit
   });
 
   useEffect(() => {
-    if (showAttractions) {
+    if (showAttractions && propertyId) {
       loadAttractions();
     }
-    if (showTransit) {
+    if (showTransit && propertyId) {
       loadTransit();
     }
   }, [propertyId, showAttractions, showTransit]);
@@ -128,6 +153,7 @@ export default function PropertyMapWithOverlays({
     try {
       // NOTE: Using a relative path. Ensure your proxy is set up in vite.config.ts
       const response = await fetch(`/api/v1/attractions/nearby/${propertyId}`);
+      if (!response.ok) throw new Error('Failed to fetch attractions');
       const data = await response.json();
       if (data.success) {
         setAttractions(data.data);
@@ -141,6 +167,7 @@ export default function PropertyMapWithOverlays({
     try {
       // NOTE: Using a relative path. Ensure your proxy is set up in vite.config.ts
       const response = await fetch(`/api/v1/transit/nearby/${propertyId}`);
+      if (!response.ok) throw new Error('Failed to fetch transit');
       const data = await response.json();
       if (data.success) {
         setTransit(data.data);
@@ -156,29 +183,27 @@ export default function PropertyMapWithOverlays({
 
   const handleGetDirections = (lat: number, lng: number) => {
     // ---- **** REPLACE WITH YOUR UNIVERSITY'S COORDINATES **** ----
-    const universityCoords = "37.2296,-80.4139"; // Example: Virginia Tech
+    const universityCoords = "38.8816,-77.1025"; // Example: VT Arlington
     
-    const url = `http://googleusercontent.com/maps/google.com/0{lat},${lng}&destination=${universityCoords}&travelmode=transit`;
+    const url = `https://www.google.com/maps/dir/?api=1&origin=${lat},${lng}&destination=${universityCoords}&travelmode=transit`;
     window.open(url, '_blank');
   };
 
-  const getAttractionIcon = (category: string) => {
-    switch (category) {
-      case 'restaurant': return restaurantIcon;
-      case 'bar': return barIcon;
-      case 'cafe': return cafeIcon;
-      default: return DefaultIcon;
-    }
-  };
-
+  // --- MODIFIED: Data filtering now includes 'other' attractions and splits transit ---
   const restaurants = attractions.filter(a => a.category === 'restaurant');
   const bars = attractions.filter(a => a.category === 'bar');
   const cafes = attractions.filter(a => a.category === 'cafe');
+  const otherAttractions = attractions.filter(
+    a => !['restaurant', 'bar', 'cafe'].includes(a.category)
+  );
+  const metros = transit.filter(t => t.station_type === 'metro');
+  const buses = transit.filter(t => t.station_type === 'bus_stop');
+  // --- END MODIFICATION ---
 
   return (
     <div className="relative w-full h-full">
       {/* Layer Toggle Controls */}
-      <div className="absolute top-4 right-4 z-[1000] bg-white rounded-lg shadow-lg p-3 space-y-2">
+      <div className="absolute top-4 right-4 z-[1000] bg-white rounded-lg shadow-lg p-3 space-y-2 max-w-[240px]">
         <div className="text-sm font-semibold mb-2">Map Layers</div>
         
         <Button
@@ -212,13 +237,33 @@ export default function PropertyMapWithOverlays({
         </Button>
 
         <Button
-          variant={layerToggles.transit ? 'default' : 'outline'}
+          variant={layerToggles.attractions ? 'default' : 'outline'}
           size="sm"
-          onClick={() => toggleLayer('transit')}
+          onClick={() => toggleLayer('attractions')}
+          className="w-full justify-start"
+        >
+          <MapPin className="w-4 h-4 mr-2" />
+          Other ({otherAttractions.length})
+        </Button>
+
+        <Button
+          variant={layerToggles.metro ? 'default' : 'outline'}
+          size="sm"
+          onClick={() => toggleLayer('metro')}
           className="w-full justify-start"
         >
           <Train className="w-4 h-4 mr-2" />
-          Transit ({transit.length})
+          Metro ({metros.length})
+        </Button>
+
+        <Button
+          variant={layerToggles.bus ? 'default' : 'outline'}
+          size="sm"
+          onClick={() => toggleLayer('bus')}
+          className="w-full justify-start"
+        >
+          <Bus className="w-4 h-4 mr-2" />
+          Bus ({buses.length})
         </Button>
       </div>
 
@@ -235,22 +280,20 @@ export default function PropertyMapWithOverlays({
         />
 
         {/* Property Marker (NOW USES NEW ICON) */}
-        <Marker position={center} icon={DefaultIcon}>
+        <Marker position={center} icon={propertyIcon}>
           <Popup>
             <div className="text-center flex flex-col gap-2">
               <div>
                 <div className="font-semibold">Your Property</div>
                 <Badge variant="secondary" className="mt-1">Selected</Badge>
               </div>
-              {layerToggles.transit && (
-                <Button
-                  size="sm"
-                  variant="outline"
-                  onClick={() => handleGetDirections(center[0], center[1])}
-                >
-                  Get Directions
-                </Button>
-              )}
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => handleGetDirections(center[0], center[1])}
+              >
+                Get Directions
+              </Button>
             </div>
           </Popup>
         </Marker>
@@ -281,7 +324,7 @@ export default function PropertyMapWithOverlays({
             <Popup>
               <div className="min-w-[200px]">
                 <div className="flex items-start gap-2 mb-2">
-                  <Utensils className="w-4 h-4 text-orange-500 mt-1" />
+                  <Utensils className="w-4 h-4 text-orange-600 mt-1" />
                   <div>
                     <div className="font-semibold">{restaurant.name}</div>
                     <div className="text-xs text-gray-600">{restaurant.address}</div>
@@ -315,7 +358,7 @@ export default function PropertyMapWithOverlays({
             <Popup>
               <div className="min-w-[200px]">
                 <div className="flex items-start gap-2 mb-2">
-                  <Wine className="w-4 h-4 text-purple-500 mt-1" />
+                  <Wine className="w-4 h-4 text-pink-600 mt-1" />
                   <div>
                     <div className="font-semibold">{bar.name}</div>
                     <div className="text-xs text-gray-600">{bar.address}</div>
@@ -343,7 +386,7 @@ export default function PropertyMapWithOverlays({
             <Popup>
               <div className="min-w-[200px]">
                 <div className="flex items-start gap-2 mb-2">
-                  <Coffee className="w-4 h-4 text-green-500 mt-1" />
+                  <Coffee className="w-4 h-4 text-yellow-800 mt-1" />
                   <div>
                     <div className="font-semibold">{cafe.name}</div>
                     <div className="text-xs text-gray-600">{cafe.address}</div>
@@ -358,12 +401,42 @@ export default function PropertyMapWithOverlays({
           </Marker>
         ))}
 
-        {/* Transit Station Markers */}
-        {layerToggles.transit && transit.map((station) => (
+        {/* --- NEW: Other Attractions Markers --- */}
+        {layerToggles.attractions && otherAttractions.map((item) => (
+          <Marker
+            key={item.id}
+            position={[item.latitude, item.longitude]}
+            icon={attractionIcon}
+            eventHandlers={{
+              click: () => onMarkerClick?.('attraction', item.id)
+            }}
+          >
+            <Popup>
+              <div className="min-w-[200px]">
+                <div className="flex items-start gap-2 mb-2">
+                  <MapPin className="w-4 h-4 text-lime-600 mt-1" />
+                  <div>
+                    <div className="font-semibold">{item.name}</div>
+                    <div className="text-xs text-gray-600">{item.address}</div>
+                  </div>
+                </div>
+                <div className="flex items-center gap-2 text-sm">
+                  <MapPin className="w-3 h-3" />
+                  <span>{item.distance_miles.toFixed(2)} mi away</span>
+                </div>
+              </div>
+            </Popup>
+          </Marker>
+        ))}
+
+        {/* --- MODIFIED: Split Transit into Metro and Bus --- */}
+
+        {/* Metro Station Markers */}
+        {layerToggles.metro && metros.map((station) => (
           <Marker
             key={station.id}
             position={[station.latitude, station.longitude]}
-            icon={transitIcon}
+            icon={getMetroIcon(station.lines)} // Uses new dynamic icon
             eventHandlers={{
               click: () => onMarkerClick?.('transit', station.id)
             }}
@@ -371,7 +444,7 @@ export default function PropertyMapWithOverlays({
             <Popup>
               <div className="min-w-[200px]">
                 <div className="flex items-start gap-2 mb-2">
-                  <Train className="w-4 h-4 text-blue-500 mt-1" />
+                  <Train className="w-4 h-4 text-gray-700 mt-1" />
                   <div>
                     <div className="font-semibold">{station.name}</div>
                     <Badge variant="outline" className="text-xs mt-1">
@@ -382,7 +455,15 @@ export default function PropertyMapWithOverlays({
                 {station.lines && station.lines.length > 0 && (
                   <div className="flex flex-wrap gap-1 mb-2">
                     {station.lines.map((line, idx) => (
-                      <Badge key={idx} variant="secondary" className="text-xs">
+                      <Badge 
+                        key={idx} 
+                        variant="secondary" 
+                        className="text-xs"
+                        style={{
+                          backgroundColor: METRO_LINE_COLORS[line] || '#ccc',
+                          color: (line === 'YL' || line === 'OR') ? '#000' : '#fff'
+                        }}
+                      >
                         {line}
                       </Badge>
                     ))}
@@ -396,30 +477,86 @@ export default function PropertyMapWithOverlays({
             </Popup>
           </Marker>
         ))}
+
+        {/* Bus Station Markers */}
+        {layerToggles.bus && buses.map((station) => (
+          <Marker
+            key={station.id}
+            position={[station.latitude, station.longitude]}
+            icon={busIcon} // Uses new bus icon
+            eventHandlers={{
+              click: () => onMarkerClick?.('transit', station.id)
+            }}
+          >
+            <Popup>
+              <div className="min-w-[200px]">
+                <div className="flex items-start gap-2 mb-2">
+                  <Bus className="w-4 h-4 text-sky-600 mt-1" />
+                  <div>
+                    <div className="font-semibold">{station.name}</div>
+                    <Badge variant="outline" className="text-xs mt-1">
+                      Bus Stop
+                    </Badge>
+                  </div>
+                </div>
+                <div className="flex items-center gap-2 text-sm">
+                  <MapPin className="w-3 h-3" />
+                  <span>{station.distance_miles.toFixed(2)} mi away</span>
+                </div>
+              </div>
+            </Popup>
+          </Marker>
+        ))}
+        {/* --- END MODIFICATION --- */}
       </MapContainer>
 
-      {/* Legend */}
-      <div className="absolute bottom-4 left-4 z-[1000] bg-white rounded-lg shadow-lg p-3">
-        <div className="text-xs font-semibold mb-2">Legend</div>
-        <div className="space-y-1 text-xs">
+      {/* Legend --- MODIFIED to show all types --- */}
+      <div className="absolute bottom-4 left-4 z-[1000] bg-white rounded-lg shadow-lg p-3 space-y-2">
+        <div className="text-sm font-semibold mb-2">Legend</div>
+        <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-xs">
           <div className="flex items-center gap-2">
-            <div className="w-4 h-4 rounded-full bg-orange-500"></div>
-            <span>Restaurants</span>
+            <div className="w-3 h-3 rounded-full" style={{backgroundColor: '#EA580C'}}></div>
+            <span>Restaurant</span>
           </div>
           <div className="flex items-center gap-2">
-            <div className="w-4 h-4 rounded-full bg-purple-500"></div>
-            <span>Bars & Nightlife</span>
+            <div className="w-3 h-3 rounded-full" style={{backgroundColor: '#DB2777'}}></div>
+            <span>Bar</span>
           </div>
           <div className="flex items-center gap-2">
-            <div className="w-4 h-4 rounded-full bg-green-500"></div>
-            <span>Cafes</span>
+            <div className="w-3 h-3 rounded-full" style={{backgroundColor: '#78350F'}}></div>
+            <span>Cafe</span>
           </div>
           <div className="flex items-center gap-2">
-            <div className="w-4 h-4 rounded-full bg-blue-500"></div>
-            <span>Transit Stations</span>
+            <div className="w-3 h-3 rounded-full" style={{backgroundColor: '#65A30D'}}></div>
+            <span>Other</span>
+          </div>
+          <div className="flex items-center gap-2">
+            <div className="w-3 h-3 rounded-full" style={{backgroundColor: '#5A6370'}}></div>
+            <span>Metro</span>
+          </div>
+          <div className="flex items-center gap-2">
+            <div className="w-3 h-3 rounded-full" style={{backgroundColor: '#0284C7'}}></div>
+            <span>Bus</span>
+          </div>
+        </div>
+        
+        {/* Metro Line Legend */}
+        <div className="mt-2 pt-2 border-t">
+          <div className="text-xs font-semibold mb-2">Metro Lines</div>
+          <div className="flex flex-wrap gap-x-3 gap-y-1">
+            {Object.entries(METRO_LINE_COLORS).filter(([line]) => line !== 'Metro').map(([line, color]) => (
+              <div key={line} className="flex items-center gap-1.5">
+                <div 
+                  className="w-3 h-3 rounded-full" 
+                  style={{ backgroundColor: color }}
+                />
+                <span className="text-xs text-gray-600">{line}</span>
+              </div>
+            ))}
           </div>
         </div>
       </div>
+      {/* --- END MODIFICATION --- */}
     </div>
   );
 }

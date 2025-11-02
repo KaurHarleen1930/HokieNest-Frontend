@@ -9,8 +9,9 @@ import { SafetyControls } from '@/components/safety/SafetyControls';
 import { supabase } from '@/lib/supabase';
 
 // --- CORRECTED IMPORTS ---
-import { fetchTransitStations, fetchMetroLines, TransitStation, MetroLine } from '@/services/transitService'; // Correct function
-import { fetchAttractions, Attraction } from '@/services/attractionsService';
+import { fetchTransitStations, fetchMetroLines, TransitStation, MetroLine,fetchCommuteRoute,
+  CommuteRouteResponse  } from '@/services/transitService'; // Correct function
+import { fetchAttractions, fetchNearbyAttractions,Attraction } from '@/services/attractionsService';
 // -----------------------------
 
 import {
@@ -134,6 +135,8 @@ export const PropertyMap: React.FC<PropertyMapProps> = ({
   const transitLayerRef = useRef<L.LayerGroup | null>(null); // For stations and stops
   const metroLinesLayerRef = useRef<L.LayerGroup | null>(null); // For the colored lines
   const attractionsLayerRef = useRef<L.LayerGroup | null>(null);
+  const [commute, setCommute] = useState<CommuteRouteResponse['data'] | null>(null);
+  const commuteLayerRef = useRef<L.LayerGroup | null>(null);
   // ---------------------------------
 
   const [isLoaded, setIsLoaded] = useState(false);
@@ -214,20 +217,19 @@ export const PropertyMap: React.FC<PropertyMapProps> = ({
     const fetchOverlayData = async () => {
       try {
         // Fetch all data points using the correct function
-        const [stationsRes, stopsRes, attractionsRes, linesRes] = await Promise.all([
-          fetchTransitStations({ type: 'metro' }), // <-- CORRECTED
-          fetchTransitStations({ type: 'bus_stop' }), // <-- CORRECTED
-          fetchAttractions(),
-          fetchMetroLines() // <-- ADDED
-        ]);
+        const [stationsRes, stopsRes, linesRes] = await Promise.all([
+        fetchTransitStations({ type: 'metro' }),
+        fetchTransitStations({ type: 'bus_stop' }),
+        // fetchAttractions(), // <-- REMOVE THIS LINE
+        fetchMetroLines()
+      ]);
         
         if (stationsRes.success) setTransitStations(stationsRes.data);
         if (stopsRes.success) setBusStops(stopsRes.data);
-        if (attractionsRes.success) setAttractions(attractionsRes.data);
+     //   if (attractionsRes.success) setAttractions(attractionsRes.data);
         if (linesRes.success) setMetroLines(linesRes.data); // <-- ADDED
 
-        console.log(`[PropertyMap] Fetched ${stationsRes.data.length} stations, ${stopsRes.data.length} stops, ${linesRes.data.length} lines, ${attractionsRes.data.length} attractions.`);
-
+        console.log(`[PropertyMap] Fetched ${stationsRes.data.length} stations, ${stopsRes.data.length} stops, ${linesRes.data.length} lines.`);
       } catch (error) {
         console.error("PropertyMap: Error fetching overlay data:", error);
       }
@@ -680,23 +682,132 @@ export const PropertyMap: React.FC<PropertyMapProps> = ({
       map.removeLayer(attractionsLayerRef.current);
       attractionsLayerRef.current = null;
     }
-
+    setAttractions([]);
     // If toggled on, add new layer
-    if (showAttractions) {
-      const attractionMarkers = attractions.map(attraction => {
-        return L.marker([attraction.latitude, attraction.longitude], {
-          icon: attractionIcon,
-          pane: 'dataPane'
-        }).bindPopup(`<b>${attraction.name}</b><br>${attraction.category}`);
+    if (showAttractions && selectedProperty) {
+    console.log(`[PropertyMap] Fetching attractions near ${selectedProperty.id}`);
+    fetchNearbyAttractions(selectedProperty.id)
+      .then(res => {
+        if (res.success && res.data.length > 0) {
+          setAttractions(res.data); // Store them
+
+          // Draw markers
+          const attractionMarkers = res.data.map(attraction => {
+            return L.marker([attraction.latitude, attraction.longitude], {
+              icon: attractionIcon,
+              pane: 'dataPane'
+            }).bindPopup(`<b>${attraction.name}</b><br>${attraction.category}`);
+          });
+
+          const layerGroup = L.layerGroup(attractionMarkers);
+          layerGroup.addTo(map);
+          attractionsLayerRef.current = layerGroup;
+        } else {
+          console.log("[PropertyMap] No nearby attractions found for this property.");
+        }
+      })
+      .catch(err => {
+        console.error("Failed to fetch nearby attractions:", err);
       });
+  }
+  // If the toggle is on but NO property is selected, do nothing.
+  // (This fulfills your request to only show attractions *near a property*)
 
-      const layerGroup = L.layerGroup(attractionMarkers);
-      layerGroup.addTo(map);
-      attractionsLayerRef.current = layerGroup;
-    }
-  }, [showAttractions, isLoaded, attractions]);
+}, [showAttractions, selectedProperty, isLoaded]);
   // ------------------------------------------
+// --- ADDED: Fetch Commute Route ---
+  useEffect(() => {
+    const map = mapInstanceRef.current;
+    if (!map) return;
 
+    // Clear existing commute layer
+    if (commuteLayerRef.current) {
+      map.removeLayer(commuteLayerRef.current);
+      commuteLayerRef.current = null;
+    }
+
+    // Get selected campus key from filters
+    const campusKey = (filters as any)?.campus ?? selectedCampus ?? null;
+
+    // Don't draw if no campus or property is selected
+    if (!selectedProperty || !campusKey) {
+      setCommute(null); // Clear commute data
+      return;
+    }
+
+    // Find the campus coordinates
+    const campusCenter = CAMPUS_CENTERS[campusKey as keyof typeof CAMPUS_CENTERS];
+    if (!campusCenter) {
+      console.warn(`[PropertyMap] Could not find campus center for key: ${campusKey}`);
+      setCommute(null);
+      return;
+    }
+
+    console.log(`[PropertyMap] Fetching commute from ${selectedProperty.name} to ${campusKey}`);
+    
+    // Fetch the commute route
+    fetchCommuteRoute(
+      selectedProperty.latitude!,
+      selectedProperty.longitude!,
+      campusCenter.lat,
+      campusCenter.lng
+    )
+    .then(res => {
+      setCommute(res.data); // Store route data in state
+    })
+    .catch(err => {
+      console.error("Failed to fetch commute route:", err);
+      setCommute(null);
+    });
+
+  }, [selectedProperty, selectedCampus, filters]); // Runs when property or campus filter changes
+
+  // --- ADDED: Render Commute Route ---
+  useEffect(() => {
+    const map = mapInstanceRef.current;
+    // Only render if we have a map and commute data
+    if (!map || !commute || !selectedProperty) return;
+
+    // Clear previous layer just in case
+    if (commuteLayerRef.current) {
+      map.removeLayer(commuteLayerRef.current);
+    }
+
+    const commuteLayer = L.layerGroup();
+
+    // 1. Get positions
+    const propertyPos: [number, number] = [selectedProperty.latitude!, selectedProperty.longitude!];
+    const fromStationPos: [number, number] = [commute.fromStation.station_lat, commute.fromStation.station_lng];
+    const toStationPos: [number, number] = [commute.toStation.station_lat, commute.toStation.station_lng];
+
+    // Find campus position again
+    const campusKey = (filters as any)?.campus ?? selectedCampus ?? 'arlington';
+    const campusCenter = CAMPUS_CENTERS[campusKey as keyof typeof CAMPUS_CENTERS] || CAMPUS_CENTERS.arlington;
+    const campusPos: [number, number] = [campusCenter.lat, campusCenter.lng];
+
+    // 2. Create polylines
+    // Property -> Start Station (Pink, dashed)
+    L.polyline([propertyPos, fromStationPos], { color: '#D61A5F', dashArray: '5, 10', weight: 2, pane: 'dataPane' }).addTo(commuteLayer);
+    // Station -> Station (Blue, solid)
+    L.polyline([fromStationPos, toStationPos], { color: '#007ACC', weight: 4, opacity: 0.8, pane: 'linePane' })
+      .bindTooltip(`<b>Metro: ${commute.commute.travelTime} mins</b><br>${commute.fromStation.station_name} to ${commute.toStation.station_name}`, { sticky: true })
+      .addTo(commuteLayer);
+    // End Station -> Campus (Orange, dashed)
+    L.polyline([toStationPos, campusPos], { color: '#E87722', dashArray: '5, 10', weight: 2, pane: 'dataPane' }).addTo(commuteLayer);
+      
+    // 3. Add station markers
+    L.marker(fromStationPos, { icon: createDataIcon('#007ACC', 12), pane: 'dataPane', zIndexOffset: 200 })
+      .bindPopup(`<b>Start:</b> ${commute.fromStation.station_name}`)
+      .addTo(commuteLayer);
+    L.marker(toStationPos, { icon: createDataIcon('#E87722', 12), pane: 'dataPane', zIndexOffset: 200 })
+      .bindPopup(`<b>End:</b> ${commute.toStation.station_name}`)
+      .addTo(commuteLayer);
+
+    // 4. Add layer to map
+    commuteLayer.addTo(map);
+    commuteLayerRef.current = commuteLayer;
+
+  }, [commute, selectedProperty, filters, selectedCampus]); // Runs when commute data or context changes
   // --- Toggle VT markers ---
   useEffect(() => {
     const map = mapInstanceRef.current;

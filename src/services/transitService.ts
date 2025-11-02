@@ -3,7 +3,7 @@
 
 import axios, { AxiosResponse } from 'axios';
 
-const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:4000/api/v1';
+const API_BASE_URL = (import.meta.env.VITE_API_URL || 'http://localhost:4000') + '/api/v1';;
 
 // Type Definitions
 export interface TransitStation {
@@ -111,6 +111,40 @@ export interface StationFilters {
   lines?: string;
 }
 
+export interface AllStationsResponse {
+  success: boolean;
+  count: number;
+  data: TransitStation[];
+}
+
+// Add this new type for the /commute response
+export interface CommuteRouteResponse {
+  success: boolean;
+  data: {
+    fromStation: {
+      wmata_station_code: string;
+      station_name: string;
+      station_lat: number;
+      station_lng: number;
+    };
+    toStation: {
+      wmata_station_code: string;
+      station_name: string;
+      station_lat: number;
+      station_lng: number;
+    };
+    commute: {
+      travelTime: number;
+      fare: {
+        peak: number;
+        offPeak: number;
+        senior: number;
+      };
+      distance: number;
+    };
+  };
+}
+
 /**
  * Fetch all transit stations
  */
@@ -175,7 +209,47 @@ export async function fetchRealTimePredictions(stationCode: string): Promise<Rea
     throw error;
   }
 }
+/**
+ * ========================================================
+ * NEW FUNCTION: Fetch ALL transit stations
+ * ========================================================
+ */
+export async function fetchAllTransitStations(): Promise<AllStationsResponse> {
+  try {
+    const response: AxiosResponse<AllStationsResponse> = await axios.get(
+      `${API_BASE_URL}/transit/stations/all`
+    );
+    return response.data;
+  } catch (error) {
+    console.error('Error fetching all transit stations:', error);
+    throw error;
+  }
+}
 
+/**
+ * ========================================================
+ * NEW FUNCTION: Fetch commute route
+ * ========================================================
+ */
+export async function fetchCommuteRoute(
+  fromLat: number,
+  fromLng: number,
+  toLat: number,
+  toLng: number
+): Promise<CommuteRouteResponse> {
+  try {
+    const response: AxiosResponse<CommuteRouteResponse> = await axios.get(
+      `${API_BASE_URL}/transit/commute`,
+      {
+        params: { fromLat, fromLng, toLat, toLng }
+      }
+    );
+    return response.data;
+  } catch (error) {
+    console.error('Error calculating commute route:', error);
+    throw error;
+  }
+}
 /**
  * Calculate commute time
  */
