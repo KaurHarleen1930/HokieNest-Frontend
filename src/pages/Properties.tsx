@@ -289,6 +289,10 @@ export default function Properties() {
             return s.includes('available') || s === 'vacant' || s === 'ready';
           });
 
+          // Simulate random VT resident count for demo purposes
+          const showBadge = Math.random() < 0.35; // ~35% of listings show badge
+          const vtResidentCount = showBadge ? Math.floor(Math.random() * 5) + 1 : 0; 
+
           return {
             id: property.id,
             title: property.name || 'Apartment Complex',
@@ -314,8 +318,12 @@ export default function Properties() {
             _priceRange: { min: minPrice, max: maxPrice },
             _unitCount: propertyUnits.length,
             _availableUnitCount: availableUnits.length,
+            vtResidentCount,
           };
         });
+
+        console.log("✅ Sample listing:", listings[0]);
+        console.log("👀 vtResidentCount sample:", listings[0]?.vtResidentCount);
 
         setAllListings(listings);
         try { localStorage.setItem('props.all', JSON.stringify(listings)); } catch { }

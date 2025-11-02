@@ -53,6 +53,7 @@ export interface Listing {
     distance: number;
     distanceText: string;
   }>;
+  
 }
 
 // Use with your existing apiRequest pattern

@@ -6,6 +6,7 @@ import { useState } from "react";
 import { Link } from "react-router-dom";
 import { favoritesAPI } from "@/lib/api";
 import { useNavigate } from "react-router-dom";
+import { VTCommunityBadge } from "@/components/VTCommunityBadge";
 
 type AnyListing = Record<string, any>;
 
@@ -20,10 +21,8 @@ const DEFAULT_IMG =
   "https://images.unsplash.com/photo-1484154218962-a197022b5858?w=800&h=600&fit=crop";
 
 function normalizeListing(l: AnyListing) {
-  // title/name
   const title: string = l.title ?? l.name ?? "Untitled";
 
-  // raw candidates for image
   const rawImg =
     l.imageUrl ??
     l.image_url ??
@@ -31,15 +30,12 @@ function normalizeListing(l: AnyListing) {
     l.thumbnailUrl ??
     (Array.isArray(l.photos) ? l.photos[0] : undefined);
 
-  // Check if we have a real image
   const hasRealImage = typeof rawImg === "string" && rawImg.trim().length > 0;
   const imageUrl: string | null = hasRealImage ? rawImg : null;
 
   const address: string = l.address ?? "";
 
-  // ---- PRICE: prefer backend _priceRange data, then unit min rent, then legacy price ----
   const backendPrice = l._priceRange?.min;
-
   const unitMinRent =
     l.min_rent ??
     l.minRent ??
@@ -58,14 +54,13 @@ function normalizeListing(l: AnyListing) {
 
   const price: number = Number(backendPrice ?? l.price ?? unitMinRent ?? metaPrice ?? 0);
 
-  // ---- BEDS/BATHS: prefer unit fields (support snake/camel + units[]), then legacy, then _meta ----
   const beds: number = Number(
     l.beds ??
-    l.unit_beds ??
-    l.unitBeds ??
-    l.units?.[0]?.beds ??
-    l?.amenities?._meta?.beds ??
-    0
+      l.unit_beds ??
+      l.unitBeds ??
+      l.units?.[0]?.beds ??
+      l?.amenities?._meta?.beds ??
+      0
   );
 
   const bathsRaw =
@@ -92,6 +87,11 @@ export function PropertyCard({ listing, className = "", onClick }: PropertyCardP
   const [isSaving, setIsSaving] = useState(false);
   const [isSaved, setIsSaved] = useState<boolean>(Boolean((listing as any).isSaved));
 
+  // 👇 Demo: randomize VT resident count (only ~30% get a badge)
+  if (listing.vtResidentCount === undefined) {
+    const showBadge = Math.random() < 0.3; // 30% chance
+    listing.vtResidentCount = showBadge ? Math.floor(Math.random() * 5) + 1 : 0;
+  }
 
   const handleViewDetails = (e: React.MouseEvent) => {
     e.stopPropagation();
@@ -147,6 +147,13 @@ export function PropertyCard({ listing, className = "", onClick }: PropertyCardP
             </div>
           </div>
         )}
+
+        {/* ✅ Show VT badge only if there are residents */}
+        {listing.vtResidentCount > 0 && (
+          <div className="absolute top-3 left-3 z-50">
+            <VTCommunityBadge vtResidentCount={listing.vtResidentCount} />
+          </div>
+        )}
         {/* Save button */}
         <button
           type="button"
@@ -174,7 +181,7 @@ export function PropertyCard({ listing, className = "", onClick }: PropertyCardP
         </h3>
 
         <p className="text-2xl font-bold text-accent" data-testid="price">
-          {L.price && L.price > 0 ? `$${Number(L.price).toLocaleString()}/mo` : 'Call for pricing'}
+          {L.price && L.price > 0 ? `$${Number(L.price).toLocaleString()}/mo` : "Call for pricing"}
         </p>
 
         <p className="text-muted text-sm line-clamp-1">{L.address}</p>

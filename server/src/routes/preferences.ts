@@ -3,14 +3,26 @@ import { z } from 'zod';
 import { supabase } from '../lib/supabase';
 import { authenticateToken, AuthRequest } from '../middleware/auth';
 
+
 const router = Router();
 
 // Validation schemas
 const userProfileSchema = z.object({
-  gender: z.enum(['male', 'female', 'nonbinary', 'other']),
-  age: z.number().int().min(1).max(120),
-  major: z.string().min(1, 'Major is required'),
+  gender: z.enum(['male', 'female', 'nonbinary', 'other']).optional().or(z.literal('')),
+  age: z
+    .preprocess(
+      (val) => (val === '' || val === null ? undefined : Number(val)),
+      z.number().int().min(1).max(120).optional()
+    ),
+  major: z.string().optional().or(z.literal('')),
+  housing_status: z.enum([
+    'SEARCHING',
+    'HAVE_HOUSING',
+    'SEEKING_ROOMMATE',
+    'NOT_SEARCHING'
+  ]).optional(),
 });
+
 
 const housingPreferencesSchema = z.object({
   budget_min: z.number().int().min(0),
@@ -62,21 +74,26 @@ router.put('/profile', authenticateToken as any, async (req: any, res: Response,
 
     const validatedData = userProfileSchema.parse(req.body);
 
-    const { error } = await supabase
+    const { error, data } = await supabase
       .from('users')
       .update({
         gender: validatedData.gender,
         age: validatedData.age,
         major: validatedData.major,
+        housing_status: validatedData.housing_status ?? null, // ✅ add this
       })
-      .eq('user_id', userId);
+      .eq('user_id', userId)
+      .select('gender, age, major, housing_status');
 
     if (error) {
       console.error('Error updating user profile:', error);
       return res.status(500).json({ message: 'Failed to update profile' });
     }
 
-    res.json({ message: 'Profile updated successfully' });
+    res.json({
+      message: 'Profile updated successfully',
+      profile: data[0],
+    });
   } catch (error) {
     if (error instanceof z.ZodError) {
       return res.status(400).json({
@@ -265,7 +282,7 @@ router.get('/profile', authenticateToken as any, async (req: any, res: Response,
     // Get user profile
     const { data: user, error: userError } = await supabase
       .from('users')
-      .select('gender, age, major')
+      .select('gender, age, major, housing_status')
       .eq('user_id', userId)
       .single();
 

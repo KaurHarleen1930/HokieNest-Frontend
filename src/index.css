@@ -135,3 +135,28 @@
     @apply bg-card border border-border rounded-lg shadow-sm hover:shadow-md transition-shadow;
   }
 }
+
+@layer components {
+  /* =========================
+     VT Community Badge
+     ========================= */
+  .vt-community-badge {
+    @apply flex items-center font-medium rounded-md;
+    background-color: #861F41; /* VT Maroon */
+    color: white;
+    padding: 4px 8px;
+    font-size: 14px;
+    box-shadow: var(--shadow-xs);
+    transition: transform var(--transition-fast);
+  }
+
+  .vt-community-badge img {
+    width: 20px;
+    height: 20px;
+    margin-right: 4px;
+  }
+
+  .vt-community-badge:hover {
+    transform: scale(1.03);
+  }
+}
