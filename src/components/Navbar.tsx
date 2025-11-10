@@ -14,6 +14,7 @@ import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { useEffect, useState } from "react";
 import { chatAPI } from "@/lib/api";
+import { ThemeToggle } from "@/components/ThemeToggle";
 
 export function Navbar() {
   const { user, logout, isAuthenticated } = useAuth();
@@ -133,6 +134,7 @@ export function Navbar() {
 
         {/* Auth Section */}
         <div className="flex items-center gap-3">
+          <ThemeToggle />
           {isAuthenticated ? (
             <>
               <DropdownMenu>

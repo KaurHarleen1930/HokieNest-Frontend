@@ -12,7 +12,7 @@ export function SafetyControls(props: {
   const chips: Preset[] = ["7d", "30d", "90d", "1y"];
 
   return (
-    <div className="flex items-center gap-3 rounded-2xl bg-white/90 shadow p-3">
+    <div className="flex items-center gap-3 rounded-2xl bg-surface/95 border border-border shadow-lg p-3 text-foreground backdrop-blur">
       <div className="flex items-center gap-2">
         <span className="text-sm font-medium">Safety</span>
         <Switch checked={props.enabled} onCheckedChange={props.onToggle} />
@@ -20,33 +20,38 @@ export function SafetyControls(props: {
 
       {props.enabled && (
         <>
-          <div className="h-5 w-px bg-muted" />
+          <div className="h-5 w-px bg-border" />
           <div className="flex items-center gap-1 transition-all">
             {chips.map(c => (
               <Button
                 key={c}
-                variant="secondary"
+                variant={props.preset === c ? "default" : "ghost"}
                 size="sm"
-                className={cn("rounded-full", c === props.preset && "ring-2 ring-primary")}
+                className={cn(
+                  "rounded-full",
+                  c === props.preset && "ring-2 ring-primary"
+                )}
                 onClick={() => props.onPresetChange(c)}
               >
                 {c}
               </Button>
             ))}
           </div>
-          <div className="h-5 w-px bg-muted" />
+          <div className="h-5 w-px bg-border" />
           <div className="flex items-center gap-1">
             <Button
               size="sm"
-              variant={props.mode === "clusters" ? "default" : "outline"}
+              variant={props.mode === "clusters" ? "default" : "ghost"}
               onClick={() => props.onModeChange("clusters")}
+              disabled={!props.enabled}
             >
               Clusters
             </Button>
             <Button
               size="sm"
-              variant={props.mode === "heat" ? "default" : "outline"}
+              variant={props.mode === "heat" ? "default" : "ghost"}
               onClick={() => props.onModeChange("heat")}
+              disabled={!props.enabled}
             >
               Heat
             </Button>

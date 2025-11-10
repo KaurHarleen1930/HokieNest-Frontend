@@ -100,6 +100,49 @@ router.get('/stations/all', async (req: Request, res: Response) => {
   }
 });
 
+/**
+ * GET /api/v1/transit/stations
+ * Optional query params:
+ *  - type: 'metro' | 'bus_stop'
+ */
+router.get('/stations', async (req: Request, res: Response) => {
+  try {
+    const { type } = req.query;
+
+    if (type && type !== 'metro' && type !== 'bus_stop') {
+      return res.status(400).json({
+        success: false,
+        error: "Invalid 'type' parameter. Expected 'metro' or 'bus_stop'.",
+      });
+    }
+
+    let query = supabase
+      .from('transit_stations')
+      .select('*')
+      .eq('is_active', true)
+      .order('name');
+
+    if (type) {
+      query = query.eq('station_type', type);
+    }
+
+    const { data, error } = await query;
+
+    if (error) {
+      throw error;
+    }
+
+    res.json({
+      success: true,
+      count: data?.length ?? 0,
+      data: data ?? [],
+    });
+  } catch (error: any) {
+    console.error('Error fetching transit stations:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
 
 /**
  * GET /api/v1/transit/lines

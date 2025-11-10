@@ -60,6 +60,19 @@ export interface SafetyFilter {
   confidence: number;
 }
 
+const DEFAULT_SUGGESTIONS = [
+  'Find housing',
+  'Browse properties',
+  'Roommate matching',
+  'Set priorities',
+  'View safety insights',
+  'Compare commute times',
+  'Explore nearby attractions',
+  'Show property reviews',
+  'Update my profile',
+  'See upcoming tours'
+];
+
 export class RAGService {
   private faqData: FAQItem[] = [];
   private rateLimits: Map<string, { count: number; resetTime: number }> = new Map();
@@ -280,6 +293,8 @@ export class RAGService {
 
       if (userId) {
         // Get ALL user data from ALL tables in the database
+        contextParts.push('DATA SOURCES AVAILABLE: property_reviews, property_attractions, property_distances, apartment_reference_locations.');
+
         const [
           housingPrefs,
           lifestylePrefs,
@@ -289,7 +304,11 @@ export class RAGService {
           apartmentProperties,
           incidents,
           roommateMatches,
-          userWeights
+          userWeights,
+          userPropertyDistances,
+          userReferenceLocations,
+          userPropertyAttractions,
+          userPropertyReviews
         ] = await Promise.all([
           // User preferences and priorities
           supabase.from('housing_preferences').select('*').eq('user_id', userId).single(),
@@ -312,7 +331,40 @@ export class RAGService {
           supabase.from('user_priority_weights').select('*').eq('user_id', userId).single(),
           
           // Additional matching data
-          supabase.from('roommate_matches').select('*').eq('user1_id', userId).limit(10)
+          supabase.from('roommate_matches').select('*').eq('user1_id', userId).limit(10),
+
+          // Property distance metadata (closest reference points)
+          supabase.from('property_distances')
+            .select(`
+              property_id,
+              distance_miles,
+              walking_time_minutes,
+              driving_time_minutes,
+              apartment_reference_locations (
+                id,
+                name,
+                type
+              )
+            `)
+            .order('distance_miles')
+            .limit(15),
+
+          // Reference locations catalog
+          supabase.from('apartment_reference_locations')
+            .select('id, name, type, address, latitude, longitude')
+            .limit(10),
+
+          // Property attractions (distance metadata)
+          supabase.from('property_attractions')
+            .select('id, property_id, attraction_id, distance_miles, walking_time_minutes, driving_time_minutes, created_at')
+            .order('distance_miles')
+            .limit(15),
+
+          // Sample property reviews (recent)
+          supabase.from('property_reviews')
+            .select('id, property_id, reviewer_name, reviewer_email, rating, title, review_text, created_at')
+            .order('created_at', { ascending: false })
+            .limit(10)
         ]);
 
         // User Profile (users table)
@@ -345,6 +397,43 @@ export class RAGService {
           contextParts.push(`CUSTOM WEIGHTS: Budget ${weights.budget_weight || 3}, Commute ${weights.commute_weight || 3}, Safety ${weights.safety_weight || 3}, Roommates ${weights.roommates_weight || 3}`);
         }
 
+        // Property distances / nearby references
+        if (userPropertyDistances.data && userPropertyDistances.data.length > 0) {
+          const sampleDistances = userPropertyDistances.data.slice(0, 5)
+            .map((d: any) => {
+              const ref = d.apartment_reference_locations;
+              return `${ref?.name || 'Location'} (${ref?.type || 'unknown'}) - ${d.distance_miles?.toFixed?.(2) ?? d.distance_miles} mi, walk ${d.walking_time_minutes || '?'} min`;
+            }).join('; ');
+          contextParts.push(`PROPERTY DISTANCES: ${sampleDistances}`);
+        }
+
+        // Reference location catalog
+        if (userReferenceLocations.data && userReferenceLocations.data.length > 0) {
+          const highlighted = userReferenceLocations.data.slice(0, 5)
+            .map((loc: any) => `${loc.name} (${loc.type})`).join('; ');
+          contextParts.push(`REFERENCE LOCATIONS: ${highlighted}`);
+        }
+
+        // Attractions near properties
+        if (userPropertyAttractions.data && userPropertyAttractions.data.length > 0) {
+          const attractionsSummary = userPropertyAttractions.data.slice(0, 5)
+            .map((a: any) => `Attraction ${a.attraction_id || a.id}: ${a.distance_miles ? `${a.distance_miles.toFixed?.(2) ?? a.distance_miles} mi` : 'distance unknown'} (walk ${a.walking_time_minutes ?? '?'} min)`)
+            .join('; ');
+          contextParts.push(`PROPERTY ATTRACTIONS: ${attractionsSummary}`);
+        }
+
+        // Sample property reviews
+        if (userPropertyReviews.error) {
+          contextParts.push(`PROPERTY REVIEWS: Query error "${userPropertyReviews.error.message}", but property_reviews dataset exists.`);
+        } else if (userPropertyReviews.data && userPropertyReviews.data.length > 0) {
+          const reviewSummary = userPropertyReviews.data.slice(0, 3)
+            .map((r: any) => `${r.reviewer_name || 'Reviewer'} rated ${r.rating ?? 'N/A'}★${r.title ? ` - "${r.title}"` : ''}`)
+            .join('; ');
+          contextParts.push(`PROPERTY REVIEWS: ${reviewSummary}`);
+        } else {
+          contextParts.push('PROPERTY REVIEWS: Dataset available; no recent reviews retrieved in this sample.');
+        }
+
         // Old Listings Format
         if (listings.data && listings.data.length > 0) {
           const listingSummary = listings.data.map((l: any) => 
@@ -372,9 +461,18 @@ export class RAGService {
         }
       } else {
         // For anonymous users, get general public data
-        const [publicListings, publicProperties] = await Promise.all([
+        const [
+          publicListings,
+          publicProperties,
+          publicReferenceLocations,
+          publicAttractions,
+          publicReviews
+        ] = await Promise.all([
           supabase.from('listings').select('*').limit(5),
-          supabase.from('apartment_properties_listings').select('*').eq('is_active', true).limit(5)
+          supabase.from('apartment_properties_listings').select('*').eq('is_active', true).limit(5),
+          supabase.from('apartment_reference_locations').select('name, type').limit(5),
+          supabase.from('property_attractions').select('attraction_id, distance_miles').limit(5),
+          supabase.from('property_reviews').select('reviewer_name, rating, title').limit(5)
         ]);
 
         if (publicListings.data && publicListings.data.length > 0) {
@@ -382,6 +480,24 @@ export class RAGService {
         }
         if (publicProperties.data && publicProperties.data.length > 0) {
           contextParts.push(`PUBLIC PROPERTIES: ${publicProperties.data.length} active properties available`);
+        }
+        if (publicReferenceLocations.data && publicReferenceLocations.data.length > 0) {
+          const refs = publicReferenceLocations.data.map((loc: any) => `${loc.name} (${loc.type})`).join('; ');
+          contextParts.push(`REFERENCE LOCATIONS AVAILABLE: ${refs}`);
+        }
+        if (publicAttractions.data && publicAttractions.data.length > 0) {
+          const attractions = publicAttractions.data.map((a: any) => `Attraction ${a.attraction_id || a.id} (${a.distance_miles ? `${a.distance_miles.toFixed?.(2) ?? a.distance_miles} mi` : 'distance unknown'})`).join('; ');
+          contextParts.push(`POPULAR ATTRACTIONS NEAR PROPERTIES: ${attractions}`);
+        }
+        if (publicReviews.data && publicReviews.data.length > 0) {
+          const reviewSummary = publicReviews.data.slice(0, 5)
+            .map((r: any) => `${r.reviewer_name || 'Reviewer'} rated ${r.rating ?? 'N/A'}★${r.title ? ` - "${r.title}"` : ''}`)
+            .join('; ');
+          contextParts.push(`PROPERTY REVIEWS AVAILABLE: ${reviewSummary}`);
+        } else if (publicReviews.error) {
+          contextParts.push(`PROPERTY REVIEWS AVAILABLE: dataset reachable but query error "${publicReviews.error.message}".`);
+        } else {
+          contextParts.push('PROPERTY REVIEWS AVAILABLE: property_reviews dataset exists; no recent public reviews retrieved in this sample.');
         }
         // Incidents data available
         contextParts.push(`SAFETY DATA: Safety incidents database is available for queries`);
@@ -412,6 +528,54 @@ export class RAGService {
               .limit(5);
             if (recentIncidents && recentIncidents.length > 0) {
               contextParts.push(`SAFETY QUERY: Found ${recentIncidents.length} recent safety incidents in the area`);
+            }
+          }
+
+          // Distances / commute queries
+          if (queryLower.includes('distance') || queryLower.includes('commute') || queryLower.includes('walking')) {
+            const { data: distanceSamples } = await supabase
+              .from('property_distances')
+              .select(`
+                property_id,
+                distance_miles,
+                apartment_reference_locations ( name, type )
+              `)
+              .order('distance_miles')
+              .limit(5);
+            if (distanceSamples && distanceSamples.length > 0) {
+              const summary = distanceSamples.map((d: any) => {
+                const ref = d.apartment_reference_locations;
+                return `${ref?.name || 'Location'} ${d.distance_miles?.toFixed?.(2) ?? d.distance_miles} mi`;
+              }).join('; ');
+              contextParts.push(`COMMUTE INFO: ${summary}`);
+            }
+          }
+
+          // Attractions queries
+          if (queryLower.includes('attraction') || queryLower.includes('restaurant') || queryLower.includes('cafe')) {
+            const { data: attractionSamples } = await supabase
+              .from('property_attractions')
+              .select('attraction_id, distance_miles, walking_time_minutes, driving_time_minutes')
+              .order('distance_miles')
+              .limit(5);
+            if (attractionSamples && attractionSamples.length > 0) {
+              const summary = attractionSamples.map((a: any) => `Attraction ${a.attraction_id || a.id} ${a.distance_miles ? `${a.distance_miles.toFixed?.(2) ?? a.distance_miles} mi` : ''}`).join('; ');
+              contextParts.push(`NEARBY ATTRACTIONS: ${summary}`);
+            }
+          }
+
+          // Reviews queries
+          if (queryLower.includes('review') || queryLower.includes('rating') || queryLower.includes('comment')) {
+            const { data: reviewSamples } = await supabase
+              .from('property_reviews')
+              .select('reviewer_name, rating, title')
+              .order('created_at', { ascending: false })
+              .limit(5);
+            if (reviewSamples && reviewSamples.length > 0) {
+              const summary = reviewSamples.map((r: any) => `${r.reviewer_name || 'Reviewer'} rated ${r.rating ?? 'N/A'}★${r.title ? ` - "${r.title}"` : ''}`).join('; ');
+              contextParts.push(`RECENT REVIEWS: ${summary}`);
+            } else {
+              contextParts.push('RECENT REVIEWS: No reviews matched, but property_reviews table is accessible for further analysis.');
             }
           }
         }
@@ -512,6 +676,7 @@ STRICT INSTRUCTIONS:
 5. TONE: Be friendly and helpful
 6. PERSONALIZATION: Reference user preferences when relevant
 7. SUGGESTIONS: End with 2-3 suggestion buttons: [Suggestion1] [Suggestion2] [Suggestion3]
+8. REVIEWS: You **do** have access to property_reviews data. Never say you lack access. If nothing relevant is found, say reviews haven’t been recorded yet and suggest leaving one.
 
 RESPONSE FORMAT:
 - Answer directly in 1-2 sentences
@@ -602,11 +767,11 @@ Keep responses concise and focused.`;
     const matches = response.match(suggestionRegex);
     
     if (matches && matches.length > 0) {
-      return matches.map(match => match.slice(1, -1)).slice(0, 4);
+      return matches.map(match => match.slice(1, -1)).slice(0, 6);
     }
     
     // Fallback to default suggestions
-    return ['Find housing', 'Find roommates', 'Set priorities', 'View dashboard'];
+    return DEFAULT_SUGGESTIONS.slice(0, 6);
   }
 
   private cleanResponse(response: string): string {
@@ -615,19 +780,21 @@ Keep responses concise and focused.`;
   }
 
   private generateSuggestions(question: string, response: string): string[] {
-    const suggestions: string[] = [];
+    const suggestions = new Set<string>();
     
     if (question.toLowerCase().includes('housing') || question.toLowerCase().includes('property')) {
-      suggestions.push('Show me properties', 'Set my budget', 'Filter by location');
+      ['Show me properties', 'Set my budget', 'Filter by location', 'Compare commute times', 'View safety insights'].forEach(s => suggestions.add(s));
     } else if (question.toLowerCase().includes('roommate')) {
-      suggestions.push('Start questionnaire', 'View my matches', 'Update preferences');
+      ['Start questionnaire', 'View my matches', 'Update preferences', 'Share my roommate profile'].forEach(s => suggestions.add(s));
     } else if (question.toLowerCase().includes('priority')) {
-      suggestions.push('Set my priorities', 'View dashboard', 'How to optimize');
+      ['Set my priorities', 'View dashboard', 'How to optimize', 'Explain priority scoring'].forEach(s => suggestions.add(s));
     } else {
-      suggestions.push('Find housing', 'Find roommates', 'Set priorities', 'View dashboard');
+      DEFAULT_SUGGESTIONS.forEach(s => suggestions.add(s));
     }
 
-    return suggestions.slice(0, 4);
+    DEFAULT_SUGGESTIONS.forEach(s => suggestions.add(s));
+
+    return Array.from(suggestions).slice(0, 6);
   }
 
   // Get FAQ items with optional filtering

@@ -8,6 +8,7 @@ import {
 } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { MapPin, Utensils, Wine, Coffee, Train, Bus, Navigation } from 'lucide-react';
+import type { LucideIcon } from 'lucide-react';
 
 type Attraction = {
   id: string;
@@ -45,27 +46,27 @@ const getCategoryInfo = (category: string) => {
   switch (category) {
     case 'restaurant':
       return { 
-        icon: <Utensils className="h-5 w-5" />, 
+        Icon: Utensils, 
         label: "Restaurant", 
-        color: "text-orange-600 bg-orange-50 border-orange-200" 
+        iconClass: "text-orange-500 dark:text-orange-300" 
       };
     case 'bar':
       return { 
-        icon: <Wine className="h-5 w-5" />, 
+        Icon: Wine, 
         label: "Bar", 
-        color: "text-purple-600 bg-purple-50 border-purple-200" 
+        iconClass: "text-purple-500 dark:text-purple-300" 
       };
     case 'cafe':
       return { 
-        icon: <Coffee className="h-5 w-5" />, 
+        Icon: Coffee, 
         label: "Cafe", 
-        color: "text-green-600 bg-green-50 border-green-200" 
+        iconClass: "text-amber-500 dark:text-amber-300" 
       };
     default:
       return { 
-        icon: <MapPin className="h-5 w-5" />, 
+        Icon: MapPin, 
         label: "Attraction", 
-        color: "text-gray-600 bg-gray-50 border-gray-200" 
+        iconClass: "text-emerald-500 dark:text-emerald-300" 
       };
   }
 };
@@ -74,22 +75,22 @@ const getTransitInfo = (station_type: string) => {
   switch (station_type) {
     case 'metro':
       return { 
-        icon: <Train className="h-5 w-5" />, 
+        Icon: Train, 
         label: "Metro", 
-        color: "text-blue-600 bg-blue-50 border-blue-200" 
+        iconClass: "text-blue-500 dark:text-blue-300" 
       };
     case 'bus':
     case 'bus_stop':
       return { 
-        icon: <Bus className="h-5 w-5" />, 
+        Icon: Bus, 
         label: "Bus", 
-        color: "text-sky-600 bg-sky-50 border-sky-200" 
+        iconClass: "text-sky-500 dark:text-sky-300" 
       };
     default:
       return { 
-        icon: <Train className="h-5 w-5" />, 
+        Icon: Train, 
         label: "Transit", 
-        color: "text-gray-600 bg-gray-50 border-gray-200" 
+        iconClass: "text-muted-foreground" 
       };
   }
 };
@@ -126,20 +127,24 @@ export const NearbyLocationsCard = ({ attractions, transit }: NearbyLocationsCar
       info = getCategoryInfo((item as Attraction).category);
     }
 
+    const IconComponent: LucideIcon = info.Icon;
+
     return (
       <div 
         key={item.id} 
-        className={`flex items-start gap-3 p-3 rounded-lg border transition-all hover:shadow-md ${info.color}`}
+        className="flex items-start gap-3 p-3 rounded-lg border border-border bg-surface-2 transition-all hover:bg-surface-3 text-foreground"
       >
-        <div className="mt-1">{info.icon}</div>
+        <div className="mt-1">
+          <IconComponent className={`h-5 w-5 ${info.iconClass}`} />
+        </div>
         <div className="flex-1 min-w-0">
-          <h4 className="font-semibold text-sm text-gray-900 truncate">{item.name}</h4>
+          <h4 className="font-semibold text-sm text-foreground truncate">{item.name}</h4>
           {item.address && (
-            <p className="text-xs text-gray-600 truncate mt-0.5">{item.address}</p>
+            <p className="text-xs text-muted-foreground truncate mt-0.5">{item.address}</p>
           )}
           
           {/* Distance and walking time */}
-          <div className="flex items-center gap-3 mt-2 text-xs text-gray-700">
+          <div className="flex items-center gap-3 mt-2 text-xs text-muted-foreground">
             <span className="flex items-center gap-1">
               <MapPin className="h-3 w-3" />
               {distance < Infinity ? `${distance.toFixed(2)} mi` : 'N/A'}
@@ -215,8 +220,8 @@ export const NearbyLocationsCard = ({ attractions, transit }: NearbyLocationsCar
         {/* Restaurants Section */}
         {restaurants.length > 0 && (
           <div>
-            <h3 className="font-semibold text-sm text-gray-800 mb-3 flex items-center gap-2">
-              <Utensils className="h-4 w-4 text-orange-600" />
+            <h3 className="font-semibold text-sm text-foreground mb-3 flex items-center gap-2">
+              <Utensils className="h-4 w-4 text-orange-500 dark:text-orange-300" />
               Restaurants ({restaurants.length})
             </h3>
             <div className="space-y-2">
@@ -228,8 +233,8 @@ export const NearbyLocationsCard = ({ attractions, transit }: NearbyLocationsCar
         {/* Bars Section */}
         {bars.length > 0 && (
           <div>
-            <h3 className="font-semibold text-sm text-gray-800 mb-3 flex items-center gap-2">
-              <Wine className="h-4 w-4 text-purple-600" />
+            <h3 className="font-semibold text-sm text-foreground mb-3 flex items-center gap-2">
+              <Wine className="h-4 w-4 text-purple-500 dark:text-purple-300" />
               Bars & Nightlife ({bars.length})
             </h3>
             <div className="space-y-2">
@@ -241,8 +246,8 @@ export const NearbyLocationsCard = ({ attractions, transit }: NearbyLocationsCar
         {/* Cafes Section */}
         {cafes.length > 0 && (
           <div>
-            <h3 className="font-semibold text-sm text-gray-800 mb-3 flex items-center gap-2">
-              <Coffee className="h-4 w-4 text-green-600" />
+            <h3 className="font-semibold text-sm text-foreground mb-3 flex items-center gap-2">
+              <Coffee className="h-4 w-4 text-amber-500 dark:text-amber-300" />
               Cafes ({cafes.length})
             </h3>
             <div className="space-y-2">
@@ -254,8 +259,8 @@ export const NearbyLocationsCard = ({ attractions, transit }: NearbyLocationsCar
         {/* Metro Stations Section */}
         {metroStations.length > 0 && (
           <div>
-            <h3 className="font-semibold text-sm text-gray-800 mb-3 flex items-center gap-2">
-              <Train className="h-4 w-4 text-blue-600" />
+            <h3 className="font-semibold text-sm text-foreground mb-3 flex items-center gap-2">
+              <Train className="h-4 w-4 text-blue-500 dark:text-blue-300" />
               Metro Stations ({metroStations.length})
             </h3>
             <div className="space-y-2">
@@ -267,8 +272,8 @@ export const NearbyLocationsCard = ({ attractions, transit }: NearbyLocationsCar
         {/* Bus Stops Section */}
         {busStops.length > 0 && (
           <div>
-            <h3 className="font-semibold text-sm text-gray-800 mb-3 flex items-center gap-2">
-              <Bus className="h-4 w-4 text-sky-600" />
+            <h3 className="font-semibold text-sm text-foreground mb-3 flex items-center gap-2">
+              <Bus className="h-4 w-4 text-sky-500 dark:text-sky-300" />
               Bus Stops ({busStops.length})
             </h3>
             <div className="space-y-2">
@@ -280,8 +285,8 @@ export const NearbyLocationsCard = ({ attractions, transit }: NearbyLocationsCar
         {/* Other Attractions */}
         {otherAttractions.length > 0 && (
           <div>
-            <h3 className="font-semibold text-sm text-gray-800 mb-3 flex items-center gap-2">
-              <MapPin className="h-4 w-4 text-gray-600" />
+            <h3 className="font-semibold text-sm text-foreground mb-3 flex items-center gap-2">
+              <MapPin className="h-4 w-4 text-muted-foreground" />
               Other Locations ({otherAttractions.length})
             </h3>
             <div className="space-y-2">

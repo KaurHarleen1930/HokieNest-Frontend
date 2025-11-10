@@ -627,23 +627,24 @@ export default function Properties() {
         </div>
 
         {/* Roommate Questionnaire Call-to-Action */}
-        <Card className="mb-6 bg-gradient-to-r from-blue-50 to-purple-50 border-blue-200">
+        <Card className="mb-6 border border-accent/40 bg-gradient-to-r from-accent/15 via-accent/5 to-transparent dark:border-accent/30 dark:bg-surface-2/80">
           <CardContent className="p-4">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-3">
-                <div className="p-2 bg-blue-100 rounded-lg">
-                  <Target className="h-5 w-5 text-blue-600" />
+                <div className="p-2 rounded-lg bg-accent/20 dark:bg-accent/25">
+                  <Target className="h-5 w-5 text-accent-foreground" />
                 </div>
                 <div>
-                  <h3 className="font-semibold text-blue-900">Create Your Roommate Profile</h3>
-                  <p className="text-sm text-blue-700">
+                  <h3 className="font-semibold text-foreground">Create Your Roommate Profile</h3>
+                  <p className="text-sm text-muted-foreground">
                     Answer a few questions to create your roommate profile and find better matches
                   </p>
                 </div>
               </div>
               <Button
                 onClick={() => navigate('/roommate-questionnaire')}
-                className="bg-blue-600 hover:bg-blue-700"
+                variant="accent"
+                className="gap-2"
               >
                 Start Questionnaire
               </Button>
@@ -894,7 +895,7 @@ export default function Properties() {
                     <Button
                       variant={showTransit ? "default" : "outline"}
                       onClick={() => setShowTransit(!showTransit)}
-                      className="bg-white hover:bg-gray-100 text-gray-800 shadow-lg"
+                      className={`shadow-lg ${showTransit ? "" : "bg-surface/95 hover:bg-surface-2 text-foreground"}`}
                     >
                       <Train className="h-4 w-4 mr-2" />
                       Transit
@@ -902,7 +903,7 @@ export default function Properties() {
                     <Button
                       variant={showAttractions ? "default" : "outline"}
                       onClick={() => setShowAttractions(!showAttractions)}
-                      className="bg-white hover:bg-gray-100 text-gray-800 shadow-lg"
+                      className={`shadow-lg ${showAttractions ? "" : "bg-surface/95 hover:bg-surface-2 text-foreground"}`}
                     >
                       <MapPin className="h-4 w-4 mr-2" />
                       Attractions

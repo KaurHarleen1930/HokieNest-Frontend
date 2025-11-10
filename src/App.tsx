@@ -4,6 +4,8 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route } from "react-router-dom";
 import { AuthProvider } from "@/lib/auth";
+import { ThemeProvider } from "@/components/ui/theme-provider";
+import { ThemePreferencesProvider } from "@/lib/theme";
 import { ProtectedRoute } from "@/components/ProtectedRoute";
 import { Navbar } from "@/components/Navbar";
 import Home from "./pages/Home";
@@ -35,14 +37,16 @@ const queryClient = new QueryClient();
 
 const App = () => (
   <QueryClientProvider client={queryClient}>
-    <TooltipProvider>
-      <AuthProvider>
-        <Toaster />
-        <Sonner />
-        <BrowserRouter>
-          <div className="min-h-screen bg-background">
-            <Navbar />
-            <Routes>
+    <ThemeProvider>
+      <TooltipProvider>
+        <AuthProvider>
+          <ThemePreferencesProvider>
+            <Toaster />
+            <Sonner />
+            <BrowserRouter>
+              <div className="min-h-screen bg-background text-foreground transition-colors duration-200">
+                <Navbar />
+                <Routes>
               <Route path="/" element={<Home />} />
               <Route path="/login" element={<Login />} />
               <Route path="/signup" element={<Signup />} />
@@ -110,12 +114,14 @@ const App = () => (
 } />
 {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
               <Route path="*" element={<NotFound />} />
-            </Routes>
-            <ChatbotWidget />
-          </div>
-        </BrowserRouter>
-      </AuthProvider>
-    </TooltipProvider>
+                </Routes>
+                <ChatbotWidget />
+              </div>
+            </BrowserRouter>
+          </ThemePreferencesProvider>
+        </AuthProvider>
+      </TooltipProvider>
+    </ThemeProvider>
   </QueryClientProvider>
 );
 

@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import { Listing, mapAPI, PropertyMarker } from '@/lib/api';
@@ -6,6 +6,7 @@ import { MapPin, Navigation, Zap } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
+import { useTheme } from 'next-themes';
 
 // Fix for default markers in Leaflet with Vite
 delete (L.Icon.Default.prototype as any)._getIconUrl;
@@ -21,7 +22,7 @@ L.Icon.Default.mergeOptions({
 
 interface LeafletMapProps {
   properties?: Listing[];
-  onPropertySelect?: (property: Listing) => void;
+  onPropertySelect?: (property: Listing | null) => void;
   selectedProperty?: Listing | null;
   className?: string;
   filters?: {
@@ -42,7 +43,10 @@ export function LeafletMap({
 }: LeafletMapProps) {
   const mapRef = useRef<HTMLDivElement>(null);
   const mapInstanceRef = useRef<L.Map | null>(null);
+  const activeBaseLayerRef = useRef<L.TileLayer | null>(null);
   const markersRef = useRef<L.Marker[]>([]);
+  const selectionFromMapRef = useRef(false);
+  const lastSelectedPropertyIdRef = useRef<string | null>(null);
   const [isLoaded, setIsLoaded] = useState(false);
   const [mapProperties, setMapProperties] = useState<PropertyMarker[]>([]);
   const [loading, setLoading] = useState(true);
@@ -71,8 +75,9 @@ export function LeafletMap({
   // Center map on Northern Virginia area by default (covers Alexandria/Arlington)
   const MAP_CENTER = [38.86, -77.09] as [number, number];
 
-  // Map layers
-  const mapLayers = {
+  const { resolvedTheme } = useTheme();
+
+  const baseLayers = useMemo(() => ({
     streets: L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
       attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
       maxZoom: 19,
@@ -81,11 +86,16 @@ export function LeafletMap({
       attribution: '&copy; <a href="https://www.esri.com/">Esri</a>',
       maxZoom: 19,
     }),
-    transit: L.tileLayer('https://{s}.tile.thunderforest.com/transport/{z}/{x}/{y}.png?apikey=your-api-key', {
-      attribution: '&copy; <a href="https://www.thunderforest.com/">Thunderforest</a>',
-      maxZoom: 19,
-    })
-  };
+  }), []);
+
+  const createTransitLayer = useCallback(
+    () =>
+      L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
+        maxZoom: 19,
+      }),
+    []
+  );
 
   // VT name matching helpers
   const VT_NAME_ALIASES = [
@@ -157,7 +167,9 @@ export function LeafletMap({
       });
 
       // Create map
-      const map = L.map(mapRef.current).setView(MAP_CENTER, 11);
+      const map = L.map(mapRef.current, {
+        doubleClickZoom: false,
+      }).setView(MAP_CENTER, 11);
       // Pane to render VT markers above property pins
       if (!map.getPane('vtPane')) {
         map.createPane('vtPane');
@@ -166,7 +178,8 @@ export function LeafletMap({
       }
 
       // Add default layer (streets)
-      mapLayers.streets.addTo(map);
+      baseLayers.streets.addTo(map);
+      activeBaseLayerRef.current = baseLayers.streets;
 
       mapInstanceRef.current = map;
       setIsLoaded(true);
@@ -182,7 +195,7 @@ export function LeafletMap({
         mapInstanceRef.current.remove();
       }
     };
-  }, []);
+  }, [baseLayers]);
 
   useEffect(() => {
     if (!mapInstanceRef.current || !isLoaded || loading) {
@@ -216,19 +229,19 @@ export function LeafletMap({
           className: 'custom-property-marker',
           html: `
             <div style="
-              background: ${isSelected ? '#E87722' : '#3B82F6'};
-              border: 2px solid white;
+              background: ${isSelected ? 'hsl(var(--map-marker-selected))' : 'hsl(var(--map-marker-primary))'};
+              border: 2px solid hsl(var(--background));
               border-radius: 50%;
               width: 24px;
               height: 24px;
               display: flex;
               align-items: center;
               justify-content: center;
-              color: white;
+              color: hsl(var(--primary-foreground));
               font-size: 12px;
               font-weight: bold;
-              box-shadow: 0 2px 4px rgba(0,0,0,0.3);
-              transform: ${isSelected ? 'scale(1.2)' : 'scale(1)'};
+              box-shadow: 0 2px 6px rgba(0,0,0,0.28);
+              transform: ${isSelected ? 'scale(1.15)' : 'scale(1)'};
             ">
               $
             </div>
@@ -240,40 +253,40 @@ export function LeafletMap({
         const marker = L.marker([property.latitude, property.longitude], { icon: propertyIcon })
           .addTo(mapInstanceRef.current!)
           .bindPopup(`
-            <div style="min-width: 200px;">
-              <h3 style="margin: 0 0 8px 0; color: #1F2937; font-size: 14px; font-weight: 600;">
+            <div style="min-width: 200px; color: hsl(var(--map-popup-text));">
+              <h3 style="margin: 0 0 8px 0; color: hsl(var(--map-popup-text)); font-size: 14px; font-weight: 600;">
                 ${title}
               </h3>
-              <p style="margin: 0 0 8px 0; color: #6B7280; font-size: 12px;">
+              <p style="margin: 0 0 8px 0; color: hsl(var(--map-popup-subtext)); font-size: 12px;">
                 ${address}
               </p>
               <div style="display: flex; gap: 8px; margin-bottom: 8px;">
                 ${price && price > 0 ?
-              `<span style="background: #E87722; color: white; padding: 2px 6px; border-radius: 4px; font-size: 11px; font-weight: bold;">
+              `<span style="background: hsl(var(--accent)); color: hsl(var(--primary-foreground)); padding: 2px 6px; border-radius: 4px; font-size: 11px; font-weight: bold;">
                     $${Number(price).toLocaleString()}/mo
                   </span>` :
-              `<span style="background: #6B7280; color: white; padding: 2px 6px; border-radius: 4px; font-size: 11px; font-weight: bold;">
+              `<span style="background: hsl(var(--muted)); color: hsl(var(--primary-foreground)); padding: 2px 6px; border-radius: 4px; font-size: 11px; font-weight: bold;">
                     Call for pricing
                   </span>`
             }
-                <span style="background: #3B82F6; color: white; padding: 2px 6px; border-radius: 4px; font-size: 11px;">
+                <span style="background: hsl(var(--map-marker-accent)); color: hsl(var(--primary-foreground)); padding: 2px 6px; border-radius: 4px; font-size: 11px;">
                   ${beds} bed${beds !== 1 ? 's' : ''}
                 </span>
-                <span style="background: #10B981; color: white; padding: 2px 6px; border-radius: 4px; font-size: 11px;">
+                <span style="background: hsl(var(--primary)); color: hsl(var(--primary-foreground)); padding: 2px 6px; border-radius: 4px; font-size: 11px;">
                   ${baths} bath${baths !== 1 ? 's' : ''}
                 </span>
               </div>
               ${intlFriendly ?
               `<div style="margin-top: 8px;">
-                  <span style="background: #8B5CF6; color: white; padding: 2px 6px; border-radius: 4px; font-size: 11px;">
+                  <span style="background: hsl(var(--primary-dark)); color: hsl(var(--primary-foreground)); padding: 2px 6px; border-radius: 4px; font-size: 11px;">
                     🌍 International Friendly
                   </span>
                 </div>` : ''
             }
               <button onclick="window.selectProperty('${property.id}')" 
                 style="
-                  background: #E87722; 
-                  color: white; 
+                  background: hsl(var(--primary)); 
+                  color: hsl(var(--primary-foreground)); 
                   border: none; 
                   padding: 6px 12px; 
                   border-radius: 4px; 
@@ -287,10 +300,22 @@ export function LeafletMap({
             </div>
           `);
 
-        // Add click handler
         marker.on('click', () => {
+          selectionFromMapRef.current = true;
           if (onPropertySelect) {
             onPropertySelect(property);
+          }
+          marker.openPopup();
+        });
+
+        marker.on('dblclick', (event: L.LeafletMouseEvent) => {
+          event.originalEvent?.preventDefault();
+          event.originalEvent?.stopPropagation();
+          if (mapInstanceRef.current) {
+            mapInstanceRef.current.setView([property.latitude, property.longitude], 16, {
+              animate: true,
+              duration: 1,
+            } as any);
           }
         });
 
@@ -299,10 +324,33 @@ export function LeafletMap({
     });
 
     // Fit map to show all markers if there are properties
-    if (propertiesToShow.length > 0 && propertiesToShow.some(p => p.latitude && p.longitude)) {
-      const group = new L.FeatureGroup(markersRef.current);
-      mapInstanceRef.current.fitBounds(group.getBounds().pad(0.1));
+    if (!selectedProperty) {
+      if (propertiesToShow.length > 0 && propertiesToShow.some(p => p.latitude && p.longitude)) {
+        const group = new L.FeatureGroup(markersRef.current);
+        mapInstanceRef.current.fitBounds(group.getBounds().pad(0.1));
+      }
+      lastSelectedPropertyIdRef.current = null;
+    } else if (selectedProperty.latitude && selectedProperty.longitude) {
+      const map = mapInstanceRef.current;
+      const alreadySelected =
+        lastSelectedPropertyIdRef.current === selectedProperty.id;
+      if (!selectionFromMapRef.current && !alreadySelected) {
+        map.setView([selectedProperty.latitude, selectedProperty.longitude], 16, {
+          animate: true,
+          duration: 1,
+        } as any);
+      }
+      const marker = markersRef.current.find(
+        (m) =>
+          Math.abs(m.getLatLng().lat - Number(selectedProperty.latitude)) < 1e-6 &&
+          Math.abs(m.getLatLng().lng - Number(selectedProperty.longitude)) < 1e-6
+      );
+      if (marker && !selectionFromMapRef.current && !alreadySelected) {
+        marker.openPopup();
+      }
+      lastSelectedPropertyIdRef.current = selectedProperty.id ?? null;
     }
+    selectionFromMapRef.current = false;
 
     // Add global function for popup button
     (window as any).selectProperty = (propertyId: string) => {
@@ -312,38 +360,32 @@ export function LeafletMap({
       }
     };
 
-  }, [mapProperties, properties, selectedProperty, onPropertySelect, isLoaded, loading]);
+  }, [mapProperties, properties, selectedProperty, onPropertySelect, isLoaded, loading, resolvedTheme]);
 
-  // Center map on selected property
-  useEffect(() => {
-    if (selectedProperty && selectedProperty.latitude && selectedProperty.longitude && mapInstanceRef.current) {
-      mapInstanceRef.current.setView([selectedProperty.latitude, selectedProperty.longitude], 15);
-    }
-  }, [selectedProperty]);
-
-  // Handle layer switching
+  // Handle layer switching & theme-aware base tiles
   useEffect(() => {
     if (!mapInstanceRef.current || !isLoaded) return;
 
     const map = mapInstanceRef.current;
 
-    // Remove all layers
-    Object.values(mapLayers).forEach(layer => {
-      map.removeLayer(layer);
-    });
-
-    // Add selected layer
-    if (currentLayer === 'transit') {
-      // Use a free transit layer instead of Thunderforest
-      const transitLayer = L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager_labels_under/{z}/{x}/{y}{r}.png', {
-        attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>',
-        maxZoom: 19,
-      });
-      transitLayer.addTo(map);
-    } else {
-      mapLayers[currentLayer].addTo(map);
+    if (activeBaseLayerRef.current) {
+      map.removeLayer(activeBaseLayerRef.current);
+      activeBaseLayerRef.current = null;
     }
-  }, [currentLayer, isLoaded]);
+
+    if (currentLayer === 'transit') {
+      const transitLayer = createTransitLayer();
+      transitLayer.addTo(map);
+      activeBaseLayerRef.current = transitLayer;
+    } else if (currentLayer === 'satellite') {
+      baseLayers.satellite.addTo(map);
+      activeBaseLayerRef.current = baseLayers.satellite;
+    } else {
+      baseLayers.streets.addTo(map);
+      activeBaseLayerRef.current = baseLayers.streets;
+    }
+    map.invalidateSize();
+  }, [baseLayers, createTransitLayer, currentLayer, isLoaded]);
 
   // Handle VT markers toggle and reference location updates
   useEffect(() => {
@@ -363,8 +405,8 @@ export function LeafletMap({
       className: 'custom-vt-marker',
       html: `
         <div style="
-          background: #E87722;
-          border: 2px solid white;
+          background: hsl(var(--primary));
+          border: 2px solid hsl(var(--background));
           border-radius: 50%;
           width: 36px;
           height: 36px;
@@ -372,7 +414,7 @@ export function LeafletMap({
           align-items: center;
           justify-content: center;
           font-weight: bold;
-          color: white;
+          color: hsl(var(--primary-foreground));
           font-size: 10px;
           box-shadow: 0 2px 4px rgba(0,0,0,0.3);
         ">VT</div>
@@ -410,7 +452,7 @@ export function LeafletMap({
         .addTo(map)
         .bindPopup(`
           <div style="text-align: center;">
-            <strong style="color: #E87722;">${m.name}</strong>
+            <strong style="color: hsl(var(--primary));">${m.name}</strong>
             ${m.address ? `<br><small>${m.address}</small>` : ''}
           </div>
         `);
@@ -425,27 +467,27 @@ export function LeafletMap({
         style={{ height: '600px', minHeight: '600px' }}
       />
       {(!isLoaded || loading) && (
-        <div className="absolute inset-0 flex items-center justify-center bg-gray-100/90 backdrop-blur-sm rounded-lg">
+        <div className="absolute inset-0 flex items-center justify-center bg-surface/90 backdrop-blur-sm rounded-lg">
           <div className="text-center">
-            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-orange-500 mx-auto mb-2"></div>
-            <p className="text-gray-600">Loading map...</p>
-            <p className="text-xs text-gray-500 mt-1">isLoaded: {isLoaded.toString()}, loading: {loading.toString()}</p>
+            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-accent mx-auto mb-2"></div>
+            <p className="text-muted-foreground">Loading map...</p>
+            <p className="text-xs text-muted-foreground/80 mt-1">isLoaded: {isLoaded.toString()}, loading: {loading.toString()}</p>
           </div>
         </div>
       )}
-      <div className="absolute top-4 left-4 z-50">
-        <div className="bg-white rounded-lg shadow-lg border border-gray-200 overflow-hidden">
-          <div className="p-3 border-b border-gray-100">
+      <div className="absolute top-4 left-4 z-[15000] pointer-events-auto">
+        <div className="bg-surface/95 backdrop-blur border border-border rounded-lg shadow-lg overflow-hidden">
+          <div className="p-3 border-b border-border/70">
             <div className="flex items-center gap-2 mb-2">
-              <Navigation className="h-4 w-4 text-orange-500" />
-              <span className="font-semibold text-sm text-gray-800">Map Layers</span>
+              <Navigation className="h-4 w-4 text-accent" />
+              <span className="font-semibold text-sm text-foreground">Map Layers</span>
             </div>
             <div className="grid grid-cols-3 gap-1">
               <button
                 onClick={() => setCurrentLayer('streets')}
                 className={`px-2 py-1 text-xs rounded transition-colors ${currentLayer === 'streets'
-                  ? 'bg-orange-500 text-white'
-                  : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                  ? 'bg-primary text-primary-foreground'
+                  : 'bg-surface-2 text-muted-foreground hover:bg-surface-3'
                   }`}
               >
                 Streets
@@ -453,8 +495,8 @@ export function LeafletMap({
               <button
                 onClick={() => setCurrentLayer('satellite')}
                 className={`px-2 py-1 text-xs rounded transition-colors ${currentLayer === 'satellite'
-                  ? 'bg-orange-500 text-white'
-                  : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                  ? 'bg-primary text-primary-foreground'
+                  : 'bg-surface-2 text-muted-foreground hover:bg-surface-3'
                   }`}
               >
                 Satellite
@@ -462,37 +504,37 @@ export function LeafletMap({
               <button
                 onClick={() => setCurrentLayer('transit')}
                 className={`px-2 py-1 text-xs rounded transition-colors ${currentLayer === 'transit'
-                  ? 'bg-orange-500 text-white'
-                  : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                  ? 'bg-primary text-primary-foreground'
+                  : 'bg-surface-2 text-muted-foreground hover:bg-surface-3'
                   }`}
               >
                 Transit
               </button>
             </div>
           </div>
-          <div className="p-3 border-b border-gray-100">
+          <div className="p-3 border-b border-border/70">
             <div className="flex items-center gap-2 mb-2">
-              <Zap className="h-4 w-4 text-blue-500" />
-              <span className="font-semibold text-sm text-gray-800">Controls</span>
+              <Zap className="h-4 w-4 text-primary" />
+              <span className="font-semibold text-sm text-foreground">Controls</span>
             </div>
             <div className="space-y-1">
               <button
                 onClick={centerMap}
-                className="w-full px-2 py-1 text-xs bg-blue-50 text-blue-700 rounded hover:bg-blue-100 transition-colors"
+                className="w-full px-2 py-1 text-xs bg-surface-2 text-foreground rounded hover:bg-surface-3 transition-colors"
               >
                 Center Map
               </button>
               <button
                 onClick={fitToMarkers}
-                className="w-full px-2 py-1 text-xs bg-green-50 text-green-700 rounded hover:bg-green-100 transition-colors"
+                className="w-full px-2 py-1 text-xs bg-surface-2 text-foreground rounded hover:bg-surface-3 transition-colors"
               >
                 Fit to Properties
               </button>
               <button
                 onClick={toggleVTMarkers}
                 className={`w-full px-2 py-1 text-xs rounded transition-colors ${showVTMarkers
-                  ? 'bg-orange-50 text-orange-700 hover:bg-orange-100'
-                  : 'bg-gray-50 text-gray-700 hover:bg-gray-100'
+                  ? 'bg-primary/10 text-primary hover:bg-primary/20'
+                  : 'bg-surface-2 text-muted-foreground hover:bg-surface-3'
                   }`}
               >
                 {showVTMarkers ? 'Hide' : 'Show'} VT Campuses
@@ -501,31 +543,31 @@ export function LeafletMap({
           </div>
           <div className="p-3">
             <div className="flex items-center gap-2 mb-2">
-              <MapPin className="h-4 w-4 text-gray-500" />
-              <span className="font-semibold text-sm text-gray-800">Legend</span>
+              <MapPin className="h-4 w-4 text-muted-foreground" />
+              <span className="font-semibold text-sm text-foreground">Legend</span>
             </div>
-            <div className="space-y-1 text-xs text-gray-600">
+            <div className="space-y-1 text-xs text-muted-foreground">
               <div className="flex items-center gap-2">
-                <div className="w-2 h-2 bg-orange-500 rounded-full"></div>
+                <div className="w-2 h-2 bg-primary rounded-full"></div>
                 <span>VT Campuses</span>
               </div>
               <div className="flex items-center gap-2">
-                <div className="w-2 h-2 bg-blue-500 rounded-full"></div>
+                <div className="w-2 h-2 bg-accent rounded-full"></div>
                 <span>Properties</span>
               </div>
               <div className="flex items-center gap-2">
-                <div className="w-2 h-2 bg-orange-500 rounded-full scale-125"></div>
+                <div className="w-2 h-2 bg-primary rounded-full scale-125"></div>
                 <span>Selected</span>
               </div>
             </div>
           </div>
         </div>
       </div>
-      <div className="absolute top-4 right-4 z-50">
-        <div className="bg-white rounded-lg shadow-lg border border-gray-200 px-3 py-2">
-          <div className="flex items-center gap-2">
-            <div className="w-2 h-2 bg-blue-500 rounded-full"></div>
-            <span className="text-sm font-medium text-gray-800">
+      <div className="absolute top-4 right-4 z-[15000] pointer-events-auto space-y-1">
+        <div className="bg-surface/95 backdrop-blur border border-border rounded-lg shadow-lg px-3 py-2">
+          <div className="flex items-center gap-2 text-sm text-foreground font-medium">
+            <div className="w-2 h-2 bg-accent rounded-full"></div>
+            <span>
               {(mapProperties.length > 0 ? mapProperties : properties || []).filter(p => p.latitude && p.longitude).length} Properties
             </span>
           </div>

@@ -1,12 +1,11 @@
 // src/components/Map/PropertyMapWithOverlays.tsx
 import React, { useState, useEffect } from 'react';
-import { MapContainer, TileLayer, Marker, Popup, useMap, Circle } from 'react-leaflet';
+import { MapContainer, TileLayer, Marker, Popup, Circle, Pane } from 'react-leaflet';
 import { DivIcon } from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { Utensils, Wine, Coffee, Train, Bus, MapPin, Building } from 'lucide-react';
-import { renderToStaticMarkup } from 'react-dom/server';
+import { Utensils, Wine, Coffee, Train, Bus, MapPin } from 'lucide-react';
 
 // --- FIX: Fix for default Leaflet icon ---
 import L from 'leaflet';
@@ -33,24 +32,23 @@ const METRO_LINE_COLORS: Record<string, string> = {
 // --- MODIFIED: Replaced the default "H" icon with a building icon ---
 const propertyIcon = new DivIcon({
   className: 'custom-property-marker-main',
-  html: renderToStaticMarkup(
-    <div style={{
-      backgroundColor: '#6366F1', // Indigo
-      width: '36px',
-      height: '36px',
-      borderRadius: '50%',
-      display: 'flex',
-      alignItems: 'center',
-      justifyContent: 'center',
-      border: '3px solid white',
-      boxShadow: '0 2px 5px rgba(0,0,0,0.4)',
-    }}>
-      <Building size={18} color="white" />
-    </div>
-  ),
-  iconSize: [36, 36],
-  iconAnchor: [18, 18],
-  popupAnchor: [0, -20]
+  html: `<div style="
+    background-color:#6366F1;
+    width:32px;
+    height:32px;
+    border-radius:50%;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    border:3px solid #fff;
+    box-shadow:0 2px 5px rgba(0,0,0,0.4);
+    color:#fff;
+    font-size:14px;
+    font-weight:600;
+  ">P</div>`,
+  iconSize: [32, 32],
+  iconAnchor: [16, 16],
+  popupAnchor: [0, -18],
 });
 // --- END OF MODIFICATION ---
 
@@ -87,39 +85,40 @@ interface TransitStation {
 // --- END OF MODIFICATION ---
 
 // --- NEW: Replaced simple icon with advanced SVG icon factory ---
-const createCustomIcon = (color: string, icon: React.ReactElement) => {
-  const iconHtml = renderToStaticMarkup(
-    React.cloneElement(icon, { size: 14, color: 'white' })
-  );
-
-  return L.divIcon({
+const createLetterIcon = (color: string, letter: string) =>
+  L.divIcon({
     className: 'custom-div-icon',
-    html: `<div style="background-color: ${color}; width: 28px; height: 28px; border-radius: 50%; display: flex; align-items: center; justify-content: center; border: 2px solid white; box-shadow: 0 2px 4px rgba(0,0,0,0.3);">
-      ${iconHtml}
-    </div>`,
-    iconSize: [28, 28],
-    iconAnchor: [14, 14],
-    popupAnchor: [0, -14],
+    html: `<div style="
+      background:${color};
+      width:24px;
+      height:24px;
+      border-radius:50%;
+      display:flex;
+      align-items:center;
+      justify-content:center;
+      color:#fff;
+      font-size:11px;
+      font-weight:600;
+      border:2px solid #fff;
+      box-shadow:0 2px 4px rgba(0,0,0,0.25);
+    ">${letter}</div>`,
+    iconSize: [24, 24],
+    iconAnchor: [12, 12],
+    popupAnchor: [0, -12],
   });
-};
 
-// --- NEW: Special icon function for Metro stations ---
 const getMetroIcon = (lines: string[] = []) => {
-  // Use the first line for color, or default
-  const primaryLine = lines.find(line => METRO_LINE_COLORS[line]) || 'Metro';
-  const color = METRO_LINE_COLORS[primaryLine] || METRO_LINE_COLORS.Metro;
-  
-  return createCustomIcon(color, <Train />);
+  const normalized = lines.map((line) => line.toUpperCase());
+  const primary = normalized.find((line) => METRO_LINE_COLORS[line]) ?? 'Metro';
+  const color = METRO_LINE_COLORS[primary] ?? METRO_LINE_COLORS.Metro;
+  return createLetterIcon(color, 'M');
 };
 
-// --- NEW: Icon definitions ---
-const restaurantIcon = createCustomIcon('#EA580C', <Utensils />); // Orange
-const barIcon = createCustomIcon('#DB2777', <Wine />); // Pink
-const cafeIcon = createCustomIcon('#78350F', <Coffee />); // Brown
-const busIcon = createCustomIcon('#0284C7', <Bus />); // Sky
-const attractionIcon = createCustomIcon('#65A30D', <MapPin />); // Lime
-// --- END NEW ---
-
+const restaurantIcon = createLetterIcon('#EA580C', 'R');
+const barIcon = createLetterIcon('#DB2777', 'B');
+const cafeIcon = createLetterIcon('#78350F', 'C');
+const busIcon = createLetterIcon('#0284C7', 'B');
+const attractionIcon = createLetterIcon('#65A30D', 'A');
 
 export default function PropertyMapWithOverlays({
   propertyId,
@@ -196,14 +195,14 @@ export default function PropertyMapWithOverlays({
   const otherAttractions = attractions.filter(
     a => !['restaurant', 'bar', 'cafe'].includes(a.category)
   );
-  const metros = transit.filter(t => t.station_type === 'metro');
-  const buses = transit.filter(t => t.station_type === 'bus_stop');
+  const metros = transit.filter(t => String(t.station_type).toLowerCase().includes('metro'));
+  const buses = transit.filter(t => String(t.station_type).toLowerCase().includes('bus'));
   // --- END MODIFICATION ---
 
   return (
     <div className="relative w-full h-full">
       {/* Layer Toggle Controls */}
-      <div className="absolute top-4 right-4 z-[1000] bg-white rounded-lg shadow-lg p-3 space-y-2 max-w-[240px]">
+      <div className="absolute top-4 right-4 z-[12000] bg-white rounded-lg shadow-lg p-3 space-y-2 max-w-[260px] max-h-[calc(100%-2rem)] overflow-y-auto pointer-events-auto">
         <div className="text-sm font-semibold mb-2">Map Layers</div>
         
         <Button
@@ -273,6 +272,7 @@ export default function PropertyMapWithOverlays({
         zoom={zoom}
         style={{ width: '100%', height: '100%' }}
         className="rounded-lg"
+        doubleClickZoom={false}
       >
         <TileLayer
           attribution='© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
@@ -432,88 +432,92 @@ export default function PropertyMapWithOverlays({
         {/* --- MODIFIED: Split Transit into Metro and Bus --- */}
 
         {/* Metro Station Markers */}
-        {layerToggles.metro && metros.map((station) => (
-          <Marker
-            key={station.id}
-            position={[station.latitude, station.longitude]}
-            icon={getMetroIcon(station.lines)} // Uses new dynamic icon
-            eventHandlers={{
-              click: () => onMarkerClick?.('transit', station.id)
-            }}
-          >
-            <Popup>
-              <div className="min-w-[200px]">
-                <div className="flex items-start gap-2 mb-2">
-                  <Train className="w-4 h-4 text-gray-700 mt-1" />
-                  <div>
-                    <div className="font-semibold">{station.name}</div>
-                    <Badge variant="outline" className="text-xs mt-1">
-                      {station.station_type}
-                    </Badge>
-                  </div>
-                </div>
-                {station.lines && station.lines.length > 0 && (
-                  <div className="flex flex-wrap gap-1 mb-2">
-                    {station.lines.map((line, idx) => (
-                      <Badge 
-                        key={idx} 
-                        variant="secondary" 
-                        className="text-xs"
-                        style={{
-                          backgroundColor: METRO_LINE_COLORS[line] || '#ccc',
-                          color: (line === 'YL' || line === 'OR') ? '#000' : '#fff'
-                        }}
-                      >
-                        {line}
+        <Pane name="metroPane" style={{ zIndex: 480 }}>
+          {layerToggles.metro && metros.map((station) => (
+            <Marker
+              key={station.id}
+              position={[station.latitude, station.longitude]}
+              icon={getMetroIcon(station.lines)} // Uses new dynamic icon
+              eventHandlers={{
+                click: () => onMarkerClick?.('transit', station.id)
+              }}
+            >
+              <Popup>
+                <div className="min-w-[200px]">
+                  <div className="flex items-start gap-2 mb-2">
+                    <Train className="w-4 h-4 text-gray-700 mt-1" />
+                    <div>
+                      <div className="font-semibold">{station.name}</div>
+                      <Badge variant="outline" className="text-xs mt-1">
+                        {station.station_type}
                       </Badge>
-                    ))}
+                    </div>
                   </div>
-                )}
-                <div className="flex items-center gap-2 text-sm">
-                  <MapPin className="w-3 h-3" />
-                  <span>{station.distance_miles.toFixed(2)} mi away</span>
+                  {station.lines && station.lines.length > 0 && (
+                    <div className="flex flex-wrap gap-1 mb-2">
+                      {station.lines.map((line, idx) => (
+                        <Badge 
+                          key={idx} 
+                          variant="secondary" 
+                          className="text-xs"
+                          style={{
+                            backgroundColor: METRO_LINE_COLORS[line] || '#ccc',
+                            color: (line === 'YL' || line === 'OR') ? '#000' : '#fff'
+                          }}
+                        >
+                          {line}
+                        </Badge>
+                      ))}
+                    </div>
+                  )}
+                  <div className="flex items-center gap-2 text-sm">
+                    <MapPin className="w-3 h-3" />
+                    <span>{station.distance_miles.toFixed(2)} mi away</span>
+                  </div>
                 </div>
-              </div>
-            </Popup>
-          </Marker>
-        ))}
+              </Popup>
+            </Marker>
+          ))}
+        </Pane>
 
         {/* Bus Station Markers */}
-        {layerToggles.bus && buses.map((station) => (
-          <Marker
-            key={station.id}
-            position={[station.latitude, station.longitude]}
-            icon={busIcon} // Uses new bus icon
-            eventHandlers={{
-              click: () => onMarkerClick?.('transit', station.id)
-            }}
-          >
-            <Popup>
-              <div className="min-w-[200px]">
-                <div className="flex items-start gap-2 mb-2">
-                  <Bus className="w-4 h-4 text-sky-600 mt-1" />
-                  <div>
-                    <div className="font-semibold">{station.name}</div>
-                    <Badge variant="outline" className="text-xs mt-1">
-                      Bus Stop
-                    </Badge>
+        <Pane name="busPane" style={{ zIndex: 470 }}>
+          {layerToggles.bus && buses.map((station) => (
+            <Marker
+              key={station.id}
+              position={[station.latitude, station.longitude]}
+              icon={busIcon} // Uses new bus icon
+              eventHandlers={{
+                click: () => onMarkerClick?.('transit', station.id)
+              }}
+            >
+              <Popup>
+                <div className="min-w-[200px]">
+                  <div className="flex items-start gap-2 mb-2">
+                    <Bus className="w-4 h-4 text-sky-600 mt-1" />
+                    <div>
+                      <div className="font-semibold">{station.name}</div>
+                      <Badge variant="outline" className="text-xs mt-1">
+                        Bus Stop
+                      </Badge>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2 text-sm">
+                    <MapPin className="w-3 h-3" />
+                    <span>{station.distance_miles.toFixed(2)} mi away</span>
                   </div>
                 </div>
-                <div className="flex items-center gap-2 text-sm">
-                  <MapPin className="w-3 h-3" />
-                  <span>{station.distance_miles.toFixed(2)} mi away</span>
-                </div>
-              </div>
-            </Popup>
-          </Marker>
-        ))}
+              </Popup>
+            </Marker>
+          ))}
+        </Pane>
         {/* --- END MODIFICATION --- */}
       </MapContainer>
 
       {/* Legend --- MODIFIED to show all types --- */}
-      <div className="absolute bottom-4 left-4 z-[1000] bg-white rounded-lg shadow-lg p-3 space-y-2">
+      <div className="absolute bottom-4 left-4 z-[12000] bg-surface/95 border border-border rounded-lg shadow-lg p-3 space-y-2 text-foreground">
         <div className="text-sm font-semibold mb-2">Legend</div>
-        <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-xs">
+        <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-xs text-muted-foreground">
           <div className="flex items-center gap-2">
             <div className="w-3 h-3 rounded-full" style={{backgroundColor: '#EA580C'}}></div>
             <span>Restaurant</span>
@@ -541,16 +545,16 @@ export default function PropertyMapWithOverlays({
         </div>
         
         {/* Metro Line Legend */}
-        <div className="mt-2 pt-2 border-t">
-          <div className="text-xs font-semibold mb-2">Metro Lines</div>
-          <div className="flex flex-wrap gap-x-3 gap-y-1">
+        <div className="mt-2 pt-2 border-t border-border/60">
+          <div className="text-xs font-semibold mb-2 text-foreground">Metro Lines</div>
+          <div className="flex flex-wrap gap-x-3 gap-y-1 text-muted-foreground">
             {Object.entries(METRO_LINE_COLORS).filter(([line]) => line !== 'Metro').map(([line, color]) => (
               <div key={line} className="flex items-center gap-1.5">
                 <div 
                   className="w-3 h-3 rounded-full" 
                   style={{ backgroundColor: color }}
                 />
-                <span className="text-xs text-gray-600">{line}</span>
+                <span className="text-xs">{line}</span>
               </div>
             ))}
           </div>

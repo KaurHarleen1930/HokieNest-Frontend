@@ -17,6 +17,7 @@ import notificationsRoutes from './routes/notifications';
 import statusRoutes from './routes/status';
 import { mapRoutes } from './routes/map';
 import favoritesRoutes from './routes/favorites';
+import settingsRoutes from './routes/settings';
 import { errorHandler } from './middleware/errorHandler';
 import { supabase } from './lib/supabase';
 
@@ -69,6 +70,7 @@ app.use('/api/v1/notifications', notificationsRoutes);
 app.use('/api/v1/status', statusRoutes);
 app.use('/api/v1/favorites', favoritesRoutes);
 app.use('/api/v1/map', mapRoutes);
+app.use('/api/v1/settings', settingsRoutes);
 
 // Register simple attractions and transit routes
 console.log('📍 Registering attractions router...');

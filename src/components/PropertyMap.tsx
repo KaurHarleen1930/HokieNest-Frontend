@@ -1,5 +1,5 @@
 // src/components/PropertyMap.tsx
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import * as L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import 'leaflet.heat';
@@ -20,6 +20,7 @@ import {
   Zap,
   Building,
 } from 'lucide-react';
+import { useTheme } from 'next-themes';
 
 // --- Fix for default markers in Leaflet with Vite ---
 delete (L.Icon.Default.prototype as any)._getIconUrl;
@@ -50,26 +51,11 @@ const CAMPUS_CENTERS: Record<string, { lat: number; lng: number }> = {
 };
 // -----------------------------------------------------------
 
-// --- Base map layers ---
-const mapLayers = {
-  streets: L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
-    attribution:
-      '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
-    maxZoom: 19,
-  }),
-  transit: L.tileLayer(
-    'https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png',
-    {
-      attribution:
-        '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>',
-      maxZoom: 19,
-    }
-  ),
-};
+// --- Base map layer helpers ---
 
 interface PropertyMapProps {
   properties?: Listing[];
-  onPropertySelect?: (property: Listing) => void;
+  onPropertySelect?: (property: Listing | null) => void;
   selectedProperty?: Listing | null;
   className?: string;
   filters?: {
@@ -130,6 +116,8 @@ export const PropertyMap: React.FC<PropertyMapProps> = ({
   const markersRef = useRef<L.Marker[]>([]);
   const vtMarkersRef = useRef<L.Marker[]>([]);
   const referenceMarkersRef = useRef<L.Marker[]>([]);
+  const selectionFromMapRef = useRef(false);
+  const lastSelectedPropertyIdRef = useRef<string | null>(null);
 
   // --- ADDED: Refs for data layers ---
   const transitLayerRef = useRef<L.LayerGroup | null>(null); // For stations and stops
@@ -146,6 +134,24 @@ export const PropertyMap: React.FC<PropertyMapProps> = ({
   const [showVTMarkers, setShowVTMarkers] = useState(true);
   const [showReferenceMarkers, setShowReferenceMarkers] = useState(true);
 
+  const { resolvedTheme } = useTheme();
+
+  const baseLayers = useMemo(() => ({
+    streets: L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
+      maxZoom: 19,
+    }),
+  }), []);
+
+  const createTransitLayer = useCallback(
+    () =>
+      L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
+        maxZoom: 19,
+      }),
+    []
+  );
+
   // --- ADDED: State for overlay data ---
   const [transitStations, setTransitStations] = useState<TransitStation[]>([]);
   const [busStops, setBusStops] = useState<TransitStation[]>([]);
@@ -160,17 +166,30 @@ export const PropertyMap: React.FC<PropertyMapProps> = ({
   const [incidentCount, setIncidentCount] = useState<number | null>(null);
   const heatLayerRef = useRef<any>(null);
   const pointsLayerRef = useRef<L.LayerGroup | null>(null);
+  const safetyOnRef = useRef<boolean>(safetyOn);
+  useEffect(() => {
+    safetyOnRef.current = safetyOn;
+  }, [safetyOn]);
   const [bbox, setBbox] = useState<[number, number, number, number] | null>(null);
+
+  const handleClearSelection = useCallback(() => {
+    selectionFromMapRef.current = false;
+    lastSelectedPropertyIdRef.current = null;
+    mapInstanceRef.current?.closePopup();
+    onPropertySelect?.(null);
+  }, [onPropertySelect]);
 
   // --- Initialize map ---
   useEffect(() => {
     if (!mapRef.current || mapInstanceRef.current) return;
 
-    const map = L.map(mapRef.current).setView(MAP_CENTER, 11);
+    const map = L.map(mapRef.current, {
+      doubleClickZoom: false,
+    }).setView(MAP_CENTER, 11);
     mapInstanceRef.current = map;
 
     // add default base layer
-    activeBaseLayerRef.current = mapLayers.streets.addTo(map);
+    activeBaseLayerRef.current = baseLayers.streets.addTo(map);
 
     // Create panes for layering
     if (!map.getPane('vtPane')) {
@@ -210,7 +229,7 @@ export const PropertyMap: React.FC<PropertyMapProps> = ({
       map.remove();
       mapInstanceRef.current = null;
     };
-  }, []);
+  }, [baseLayers]);
 
   // --- MODIFIED: Fetch overlay data ---
   useEffect(() => {
@@ -294,9 +313,9 @@ export const PropertyMap: React.FC<PropertyMapProps> = ({
         className: 'custom-vt-marker',
         html: `
           <div style="
-            background:#E87722;border:2px solid white;border-radius:50%;
+          background:hsl(var(--primary));border:2px solid hsl(var(--background));border-radius:50%;
             width:28px;height:28px;display:flex;align-items:center;justify-content:center;
-            color:white;font-size:10px;font-weight:700;box-shadow:0 2px 4px rgba(0,0,0,0.3);
+          color:hsl(var(--primary-foreground));font-size:10px;font-weight:700;box-shadow:0 2px 4px rgba(0,0,0,0.3);
           ">VT</div>
         `,
         iconSize: [28, 28],
@@ -307,8 +326,8 @@ export const PropertyMap: React.FC<PropertyMapProps> = ({
         .addTo(map)
         .bindPopup(`
           <div class="p-2">
-            <h3 class="font-bold text-orange-600">${campus.name}</h3>
-            <p class="text-sm text-gray-600">Virginia Tech Campus</p>
+            <h3 class="font-bold" style="color:hsl(var(--primary));">${campus.name}</h3>
+            <p class="text-sm" style="color:hsl(var(--map-popup-subtext));">Virginia Tech Campus</p>
           </div>
         `);
       vtMarkersRef.current.push(marker);
@@ -328,15 +347,21 @@ export const PropertyMap: React.FC<PropertyMapProps> = ({
           'washington–alexandria architecture center',
           'washington-alexandria architecture center',
         ].includes(name);
-        const color = isVT ? '#E87722' : (type === 'university' ? '#3B82F6' : type === 'transit' ? '#10B981' : '#8B5CF6');
+        const color = isVT
+          ? 'hsl(var(--primary))'
+          : type === 'university'
+            ? 'hsl(var(--map-marker-accent))'
+            : type === 'transit'
+              ? 'hsl(var(--accent))'
+              : 'hsl(var(--primary-dark))';
         return {
           isVT, icon: L.divIcon({
             className: 'custom-reference-marker',
             html: `
             <div style="
-              background:${color};border:2px solid white;border-radius:50%;
+              background:${color};border:2px solid hsl(var(--background));border-radius:50%;
               width:24px;height:24px;display:flex;align-items:center;justify-content:center;
-              color:white;font-size:10px;box-shadow:0 2px 4px rgba(0,0,0,0.3);
+              color:hsl(var(--primary-foreground));font-size:10px;box-shadow:0 2px 4px rgba(0,0,0,0.3);
             ">
               ${isVT ? 'VT' : (type === 'university' ? 'U' : type === 'transit' ? 'T' : 'E')}
             </div>
@@ -362,8 +387,8 @@ export const PropertyMap: React.FC<PropertyMapProps> = ({
         .bindPopup(`
           <div class="p-2">
             <h3 class="font-bold">${location.name}</h3>
-            <p class="text-sm text-gray-600">${location.type || 'reference'}</p>
-            ${location.address ? `<p class="text-xs text-gray-500">${location.address}</p>` : ''}
+            <p class="text-sm text-muted-foreground">${location.type || 'reference'}</p>
+            ${location.address ? `<p class="text-xs text-muted-foreground/80">${location.address}</p>` : ''}
           </div>
         `);
 
@@ -435,9 +460,9 @@ export const PropertyMap: React.FC<PropertyMapProps> = ({
         html: isDetailPage
           ? `
             <div style="
-              background:#E87722;border:3px solid white;border-radius:50% 50% 50% 0;
+              background:hsl(var(--map-marker-selected));border:3px solid hsl(var(--background));border-radius:50% 50% 50% 0;
               width:30px;height:30px;display:flex;align-items:center;justify-content:center;
-              color:white;font-size:16px;font-weight:bold;box-shadow:0 4px 8px rgba(0,0,0,0.3);
+              color:hsl(var(--primary-foreground));font-size:16px;font-weight:bold;box-shadow:0 4px 8px rgba(0,0,0,0.4);
               transform:rotate(-45deg);
             ">
               <span style="transform:rotate(45deg);">📍</span>
@@ -445,13 +470,13 @@ export const PropertyMap: React.FC<PropertyMapProps> = ({
           `
           : `
             <div style="
-              background:${isSelected ? '#E87722' : '#3B82F6'};
-              border:2px solid white;border-radius:50%;
+              background:${isSelected ? 'hsl(var(--map-marker-selected))' : 'hsl(var(--map-marker-primary))'};
+              border:2px solid hsl(var(--background));border-radius:50%;
               width:${isSelected ? '24px' : '20px'};
               height:${isSelected ? '24px' : '20px'};
               display:flex;align-items:center;justify-content:center;
-              color:white;font-size:10px;font-weight:bold;box-shadow:0 2px 4px rgba(0,0,0,0.3);
-              transform:${isSelected ? 'scale(1.2)' : 'scale(1)'};
+              color:hsl(var(--primary-foreground));font-size:10px;font-weight:bold;box-shadow:0 2px 6px rgba(0,0,0,0.28);
+              transform:${isSelected ? 'scale(1.15)' : 'scale(1)'};
             ">
               ${isSelected ? '★' : 'P'}
             </div>
@@ -465,46 +490,81 @@ export const PropertyMap: React.FC<PropertyMapProps> = ({
       })
         .addTo(map)
         .bindPopup(`
-          <div class="p-3 min-w-[200px]">
-            <h3 class="font-bold text-lg mb-2">${title}</h3>
-            <p class="text-sm text-gray-600 mb-2">${address ?? ''}</p>
-            <p class="text-lg font-bold text-orange-600 mb-2">
+          <div style="min-width:220px;padding:12px;color:hsl(var(--map-popup-text));">
+            <h3 style="margin:0 0 8px 0;font-weight:700;font-size:16px;color:hsl(var(--map-popup-text));">${title}</h3>
+            <p style="margin:0 0 8px 0;font-size:13px;color:hsl(var(--map-popup-subtext));">
+              ${address ?? ''}
+            </p>
+            <p style="margin:0 0 12px 0;font-weight:700;font-size:15px;color:hsl(var(--accent));">
               ${price > 0 ? `$${price.toLocaleString()}/mo` : 'Call for pricing'}
             </p>
-            <div class="flex gap-2 mb-3">
-              <span class="px-2 py-1 bg-blue-100 text-blue-800 rounded text-xs">
+            <div style="display:flex;gap:8px;margin-bottom:12px;">
+              <span style="padding:4px 8px;background:hsl(var(--map-marker-accent));color:hsl(var(--primary-foreground));border-radius:6px;font-size:11px;font-weight:600;">
                 ${(property as any).beds || 0} bed${(property as any).beds !== 1 ? 's' : ''}
               </span>
-              <span class="px-2 py-1 bg-green-100 text-green-800 rounded text-xs">
+              <span style="padding:4px 8px;background:hsl(var(--primary));color:hsl(var(--primary-foreground));border-radius:6px;font-size:11px;font-weight:600;">
                 ${(property as any).baths || 0} bath${(property as any).baths !== 1 ? 's' : ''}
               </span>
             </div>
             ${(property as any).distanceFromCampus
-            ? `<div class="text-xs text-gray-600 mb-2">📍 ${(property as any).distanceFromCampus} miles from ${(property as any).nearestCampus?.name || 'VT Campus'}</div>`
-            : ''
-          }
+            ? `<div style="font-size:11px;color:hsl(var(--map-popup-subtext));margin-bottom:12px;">📍 ${(property as any).distanceFromCampus} miles from ${(property as any).nearestCampus?.name || 'VT Campus'}</div>`
+            : ''}
             <button
               onclick="viewProperty('${property.id}')"
-              class="w-full bg-orange-500 text-white px-3 py-2 rounded text-sm hover:bg-orange-600 transition-colors"
+              style="
+                width:100%;
+                background:hsl(var(--primary));
+                color:hsl(var(--primary-foreground));
+                padding:8px 12px;
+                border:none;
+                border-radius:6px;
+                font-size:13px;
+                font-weight:600;
+                cursor:pointer;
+                transition:filter 0.2s ease;
+              "
+              onmouseover="this.style.filter='brightness(1.05)'"
+              onmouseout="this.style.filter=''"
             >
               View Details
             </button>
-            
             ${showTransit ? `
               <button
                 onclick="getDirections(${property.latitude}, ${property.longitude})"
-                class="w-full bg-blue-500 text-white px-3 py-2 rounded text-sm hover:bg-blue-600 transition-colors mt-2"
+                style="
+                  width:100%;
+                  background:hsl(var(--map-marker-accent));
+                  color:hsl(var(--primary-foreground));
+                  padding:8px 12px;
+                  border:none;
+                  border-radius:6px;
+                  font-size:13px;
+                  font-weight:600;
+                  cursor:pointer;
+                  margin-top:8px;
+                  transition:filter 0.2s ease;
+                "
+                onmouseover="this.style.filter='brightness(1.05)'"
+                onmouseout="this.style.filter=''"
               >
                 Get Directions
               </button>
             ` : ''}
-            </div>
+          </div>
         `);
 
       marker.on('click', () => {
+        selectionFromMapRef.current = true;
         onPropertySelect?.(property as any);
-        if (!isDetailPage && mapInstanceRef.current) {
-          mapInstanceRef.current.setView([property.latitude!, property.longitude!], 16, {
+        marker.openPopup();
+      });
+
+      marker.on('dblclick', (event: L.LeafletMouseEvent) => {
+        event.originalEvent?.preventDefault();
+        event.originalEvent?.stopPropagation();
+        const map = mapInstanceRef.current;
+        if (map) {
+          map.setView([property.latitude!, property.longitude!], 16, {
             animate: true,
             duration: 1,
           } as any);
@@ -515,20 +575,42 @@ export const PropertyMap: React.FC<PropertyMapProps> = ({
     });
 
     // fit bounds logic
-    if (filteredProps.length > 0 && filteredProps.some((p) => p.latitude && p.longitude)) {
-      if (isDetailPage) {
-        const property = filteredProps[0];
-        map.setView([property.latitude!, property.longitude!], 16);
-        setTimeout(() => {
-          if (mapInstanceRef.current) {
-            mapInstanceRef.current.setView([property.latitude!, property.longitude!], 16);
-          }
-        }, 100);
-      } else {
-        const group = new L.FeatureGroup(markersRef.current);
-        map.fitBounds(group.getBounds().pad(0.1));
+    if (!selectedProperty) {
+      if (filteredProps.length > 0 && filteredProps.some((p) => p.latitude && p.longitude)) {
+        if (isDetailPage) {
+          const property = filteredProps[0];
+          map.setView([property.latitude!, property.longitude!], 16);
+          setTimeout(() => {
+            if (mapInstanceRef.current) {
+              mapInstanceRef.current.setView([property.latitude!, property.longitude!], 16);
+            }
+          }, 100);
+        } else {
+          const group = new L.FeatureGroup(markersRef.current);
+          map.fitBounds(group.getBounds().pad(0.1));
+        }
       }
+      lastSelectedPropertyIdRef.current = null;
+    } else if (selectedProperty.latitude && selectedProperty.longitude) {
+      const alreadySelected =
+        lastSelectedPropertyIdRef.current === selectedProperty.id;
+      if (!selectionFromMapRef.current && !alreadySelected) {
+        map.setView([selectedProperty.latitude, selectedProperty.longitude], 16, {
+          animate: true,
+          duration: 1,
+        } as any);
+      }
+      const marker = markersRef.current.find(
+        (m) =>
+          Math.abs(m.getLatLng().lat - Number(selectedProperty.latitude)) < 1e-6 &&
+          Math.abs(m.getLatLng().lng - Number(selectedProperty.longitude)) < 1e-6
+      );
+      if (marker && !selectionFromMapRef.current && !alreadySelected) {
+        marker.openPopup();
+      }
+      lastSelectedPropertyIdRef.current = selectedProperty.id ?? null;
     }
+    selectionFromMapRef.current = false;
 
     // global helper for popup buttons
     (window as any).selectProperty = (propertyId: string) => {
@@ -556,7 +638,7 @@ export const PropertyMap: React.FC<PropertyMapProps> = ({
     };
     // --- End of modification ---
 
-  }, [mapProperties, properties, selectedProperty, isLoaded, onPropertySelect, filters, selectedCampus, showTransit]); // Added showTransit
+  }, [mapProperties, properties, selectedProperty, isLoaded, onPropertySelect, filters, selectedCampus, showTransit, resolvedTheme]); // Added showTransit
 
   // --- Detail page re-center safeguard ---
   useEffect(() => {
@@ -584,11 +666,19 @@ export const PropertyMap: React.FC<PropertyMapProps> = ({
 
     if (activeBaseLayerRef.current) {
       map.removeLayer(activeBaseLayerRef.current);
+      activeBaseLayerRef.current = null;
     }
-    const next = currentLayer === 'streets' ? mapLayers.streets : mapLayers.transit;
-    next.addTo(map);
-    activeBaseLayerRef.current = next;
-  }, [currentLayer, isLoaded]);
+
+    if (currentLayer === 'transit') {
+      const transitLayer = createTransitLayer();
+      transitLayer.addTo(map);
+      activeBaseLayerRef.current = transitLayer;
+    } else {
+      baseLayers.streets.addTo(map);
+      activeBaseLayerRef.current = baseLayers.streets;
+    }
+    map.invalidateSize();
+  }, [baseLayers, createTransitLayer, currentLayer, isLoaded]);
   
   // --- MODIFIED: Toggle Transit data layer ---
   useEffect(() => {
@@ -635,7 +725,7 @@ export const PropertyMap: React.FC<PropertyMapProps> = ({
           pane: 'linePane', // Draw lines below markers
           style: (feature) => {
             return {
-              color: feature?.properties.color || '#888888',
+              color: feature?.properties.color || 'hsl(var(--muted))',
               weight: 4,
               opacity: 0.7
             };
@@ -653,7 +743,7 @@ export const PropertyMap: React.FC<PropertyMapProps> = ({
               "type": "Feature",
               "properties": {
                 "name": line.route_name,
-                "color": line.line_color || '#888888'
+                "color": line.line_color || 'hsl(var(--muted))'
               },
               "geometry": line.route_path
             };
@@ -793,13 +883,13 @@ export const PropertyMap: React.FC<PropertyMapProps> = ({
       .bindTooltip(`<b>Metro: ${commute.commute.travelTime} mins</b><br>${commute.fromStation.station_name} to ${commute.toStation.station_name}`, { sticky: true })
       .addTo(commuteLayer);
     // End Station -> Campus (Orange, dashed)
-    L.polyline([toStationPos, campusPos], { color: '#E87722', dashArray: '5, 10', weight: 2, pane: 'dataPane' }).addTo(commuteLayer);
+    L.polyline([toStationPos, campusPos], { color: 'hsl(var(--primary))', dashArray: '5, 10', weight: 2, pane: 'dataPane' }).addTo(commuteLayer);
       
     // 3. Add station markers
     L.marker(fromStationPos, { icon: createDataIcon('#007ACC', 12), pane: 'dataPane', zIndexOffset: 200 })
       .bindPopup(`<b>Start:</b> ${commute.fromStation.station_name}`)
       .addTo(commuteLayer);
-    L.marker(toStationPos, { icon: createDataIcon('#E87722', 12), pane: 'dataPane', zIndexOffset: 200 })
+    L.marker(toStationPos, { icon: createDataIcon('hsl(var(--primary))', 12), pane: 'dataPane', zIndexOffset: 200 })
       .bindPopup(`<b>End:</b> ${commute.toStation.station_name}`)
       .addTo(commuteLayer);
 
@@ -839,9 +929,9 @@ export const PropertyMap: React.FC<PropertyMapProps> = ({
       className: 'custom-vt-marker',
       html: `
         <div style="
-          background:#E87722;border:2px solid white;border-radius:50%;
+          background:hsl(var(--primary));border:2px solid hsl(var(--background));border-radius:50%;
           width:28px;height:28px;display:flex;align-items:center;justify-content:center;
-          color:white;font-size:10px;font-weight:700;box-shadow:0 2px 4px rgba(0,0,0,0.3);
+          color:hsl(var(--primary-foreground));font-size:10px;font-weight:700;box-shadow:0 2px 4px rgba(0,0,0,0.3);
         ">VT</div>
       `,
       iconSize: [28, 28],
@@ -873,8 +963,8 @@ export const PropertyMap: React.FC<PropertyMapProps> = ({
           .addTo(map)
           .bindPopup(`
             <div class="p-2">
-              <h3 class="font-bold text-orange-600">${p.name}</h3>
-              ${p.address ? `<p class="text-xs text-gray-600">${p.address}</p>` : ''}
+                  <h3 class="font-bold" style="color:hsl(var(--primary));">${p.name}</h3>
+                  ${p.address ? `<p class="text-xs" style="color:hsl(var(--map-popup-subtext));">${p.address}</p>` : ''}
             </div>
           `);
         vtMarkersRef.current.push(marker);
@@ -922,33 +1012,55 @@ export const PropertyMap: React.FC<PropertyMapProps> = ({
     const map = mapInstanceRef.current;
     if (!map || !bbox) return;
 
-    // clear old safety layers
-    if (heatLayerRef.current) {
-      map.removeLayer(heatLayerRef.current);
-      heatLayerRef.current = null;
-    }
-    if (pointsLayerRef.current) {
-      map.removeLayer(pointsLayerRef.current);
-      pointsLayerRef.current = null;
-    }
+    const clearLayers = () => {
+      if (heatLayerRef.current) {
+        map.removeLayer(heatLayerRef.current);
+        heatLayerRef.current = null;
+      }
+      if (pointsLayerRef.current) {
+        map.removeLayer(pointsLayerRef.current);
+        pointsLayerRef.current = null;
+      }
+    };
+
+    clearLayers();
+
+    let cancelled = false;
 
     if (!safetyOn) {
       setIncidentCount(null);
-      return;
+      return () => {
+        cancelled = true;
+        clearLayers();
+      };
     }
 
     const run = async () => {
       const { from, to } = presetWindow(preset);
       const [west, south, east, north] = bbox!;
-      const { data, error } = await supabase.rpc('incidents_geojson', {
-        start_ts: from.toISOString(),
-        end_ts: to.toISOString(),
-        min_lat: south,
-        min_lng: west,
-        max_lat: north,
-        max_lng: east,
-        limit_rows: 5000,
-      });
+      let data: any = null;
+      let error: any = null;
+
+      for (const limit of [1000, 500, 250]) {
+        const result = await supabase.rpc('incidents_geojson', {
+          start_ts: from.toISOString(),
+          end_ts: to.toISOString(),
+          min_lat: south,
+          min_lng: west,
+          max_lat: north,
+          max_lng: east,
+          limit_rows: limit,
+        });
+
+        data = result.data;
+        error = result.error;
+
+        if (!error) break;
+        if (error.code !== '57014') break; // statement timeout
+        console.warn(`incidents_geojson timeout at limit ${limit}, retrying with smaller window...`);
+      }
+
+      if (cancelled || !safetyOnRef.current) return;
 
       if (error || !data) {
         console.warn('incidents_geojson error', error);
@@ -959,7 +1071,7 @@ export const PropertyMap: React.FC<PropertyMapProps> = ({
       const features: any[] = Array.isArray(data.features) ? data.features : [];
       const count = features.length;
       setIncidentCount(count);
-      if (count === 0) return;
+      if (count === 0 || cancelled || !safetyOnRef.current) return;
 
       if (safetyMode === 'heat') {
         const pts = features.map((f: any) => {
@@ -968,8 +1080,10 @@ export const PropertyMap: React.FC<PropertyMapProps> = ({
           return [lat, lng, w] as [number, number, number];
         });
         const layer = (L as any).heatLayer(pts, { radius: 18 });
-        layer.addTo(map);
-        heatLayerRef.current = layer;
+        if (!cancelled && safetyOnRef.current) {
+          layer.addTo(map);
+          heatLayerRef.current = layer;
+        }
       } else {
         const g = L.layerGroup();
         features.forEach((f: any) => {
@@ -980,22 +1094,29 @@ export const PropertyMap: React.FC<PropertyMapProps> = ({
             .bindPopup(`
               <div style="min-width:180px">
                 <div style="font-weight:600">${f.properties?.type ?? 'Incident'}</div>
-                <div style="font-size:12px;color:#555">${new Date(f.properties?.occurred_at).toLocaleString()}</div>
+                <div style="font-size:12px;color:hsl(var(--map-popup-subtext))">${new Date(f.properties?.occurred_at).toLocaleString()}</div>
                 ${f.properties?.details?.BLOCK
                 ? `<div style="font-size:12px;margin-top:4px">${f.properties.details.BLOCK}</div>`
                 : ''
               }
-                ${f.properties?.source ? `<div style="font-size:11px;color:#777;margin-top:4px">Source: ${f.properties.source}</div>` : ''}
+                ${f.properties?.source ? `<div style="font-size:11px;color:hsl(var(--map-popup-subtext));margin-top:4px">Source: ${f.properties.source}</div>` : ''}
               </div>
             `)
             .addTo(g);
         });
-        g.addTo(map);
-        pointsLayerRef.current = g;
+        if (!cancelled && safetyOnRef.current) {
+          g.addTo(map);
+          pointsLayerRef.current = g;
+        }
       }
     };
 
     run();
+
+    return () => {
+      cancelled = true;
+      clearLayers();
+    };
   }, [safetyOn, safetyMode, preset, bbox, isLoaded]);
 
   // --- Small helpers for her controls ---
@@ -1010,42 +1131,42 @@ export const PropertyMap: React.FC<PropertyMapProps> = ({
   };
 
   return (
-    <div className={`relative ${className}`} style={{ isolation: 'isolate', zIndex: 1 }}>
+    <div className={`relative ${className}`}>
       {/* Map Container */}
       <div
         ref={mapRef}
-        className="w-full h-full rounded-lg overflow-hidden relative z-0"
-        style={{ zIndex: 0, minHeight: '600px', backgroundColor: '#f0f0f0' }}
+        className="w-full h-full rounded-lg overflow-hidden relative"
+        style={{ minHeight: '600px', backgroundColor: 'hsl(var(--surface-2))' }}
       />
 
       {/* Loading Overlay */}
       {!isLoaded && (
-        <div className="absolute inset-0 bg-white bg-opacity-75 flex items-center justify-center rounded-lg z-10">
+        <div className="absolute inset-0 bg-surface/90 backdrop-blur flex items-center justify-center rounded-lg z-10">
           <div className="text-center">
-            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-orange-500 mx-auto mb-2"></div>
-            <p className="text-sm text-gray-600">Loading map...</p>
+            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-accent mx-auto mb-2"></div>
+            <p className="text-sm text-muted-foreground">Loading map...</p>
           </div>
         </div>
       )}
 
       {/* Map Controls Panel */}
-      <div className="absolute top-2 left-2 z-[110]">
-        <div className="bg-white rounded-lg shadow-lg border border-gray-200 overflow-hidden">
+      <div className="absolute top-2 left-2 z-[15000] pointer-events-auto">
+        <div className="bg-surface/95 backdrop-blur rounded-lg shadow-lg border border-border overflow-hidden">
           {/* Layer Controls */}
-          <div className="p-2 border-b border-gray-100">
+          <div className="p-2 border-b border-border/70">
             <div className="flex items-center gap-1">
-              <Navigation className="h-3 w-3 text-orange-500" />
-              <span className="text-xs font-medium text-gray-700">Layers:</span>
+              <Navigation className="h-3 w-3 text-accent" />
+              <span className="text-xs font-medium text-foreground">Layers:</span>
               <button
                 onClick={() => setCurrentLayer('streets')}
-                className={`px-2 py-1 text-xs rounded transition-colors ${currentLayer === 'streets' ? 'bg-orange-500 text-white' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                className={`px-2 py-1 text-xs rounded transition-colors ${currentLayer === 'streets' ? 'bg-primary text-primary-foreground' : 'bg-surface-2 text-muted-foreground hover:bg-surface-3'
                   }`}
               >
                 Streets
               </button>
               <button
                 onClick={() => setCurrentLayer('transit')}
-                className={`px-2 py-1 text-xs rounded transition-colors ${currentLayer === 'transit' ? 'bg-orange-500 text-white' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                className={`px-2 py-1 text-xs rounded transition-colors ${currentLayer === 'transit' ? 'bg-primary text-primary-foreground' : 'bg-surface-2 text-muted-foreground hover:bg-surface-3'
                   }`}
               >
                 Transit
@@ -1054,43 +1175,60 @@ export const PropertyMap: React.FC<PropertyMapProps> = ({
           </div>
 
           {/* Map Controls */}
-          <div className="p-2 border-b border-gray-100">
+          <div className="p-2 border-b border-border/70">
             <div className="flex items-center gap-1">
-              <Zap className="h-3 w-3 text-blue-500" />
-              <span className="text-xs font-medium text-gray-700">Controls:</span>
+              <Zap className="h-3 w-3 text-primary" />
+              <span className="text-xs font-medium text-foreground">Controls:</span>
               <button
                 onClick={centerMap}
-                className="px-2 py-1 text-xs bg-gray-100 text-gray-700 rounded hover:bg-gray-200 transition-colors"
+                className="px-2 py-1 text-xs bg-surface-2 text-foreground rounded hover:bg-surface-3 transition-colors"
               >
                 Center
               </button>
               <button
                 onClick={fitToMarkers}
-                className="px-2 py-1 text-xs bg-gray-100 text-gray-700 rounded hover:bg-gray-200 transition-colors"
+                className="px-2 py-1 text-xs bg-surface-2 text-foreground rounded hover:bg-surface-3 transition-colors"
               >
                 Fit
               </button>
             </div>
           </div>
 
+        {/* Selected Property */}
+        {selectedProperty && (
+          <div className="p-2 border-b border-border/70">
+            <div className="flex items-center justify-between gap-2">
+              <span className="text-xs font-medium text-foreground truncate">
+                {selectedProperty.title || selectedProperty.name || 'Selected property'}
+              </span>
+              <button
+                onClick={handleClearSelection}
+                className="px-2 py-1 text-xs bg-destructive text-destructive-foreground rounded hover:bg-destructive/90 transition-colors"
+              >
+                Clear
+              </button>
+            </div>
+          </div>
+        )}
+
           {/* VT & Reference Toggles */}
-          <div className="p-2 border-b border-gray-100">
+          <div className="p-2 border-b border-border/70">
             <div className="flex items-center gap-1">
-              <Building className="h-3 w-3 text-purple-500" />
-              <span className="text-xs font-medium text-gray-700">VT:</span>
+              <Building className="h-3 w-3 text-primary" />
+              <span className="text-xs font-medium text-foreground">VT:</span>
               <button
                 onClick={() => setShowVTMarkers((v) => !v)}
-                className={`px-2 py-1 text-xs rounded transition-colors ${showVTMarkers ? 'bg-purple-500 text-white' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                className={`px-2 py-1 text-xs rounded transition-colors ${showVTMarkers ? 'bg-primary text-primary-foreground' : 'bg-surface-2 text-muted-foreground hover:bg-surface-3'
                   }`}
               >
                 {showVTMarkers ? 'Hide' : 'Show'}
               </button>
 
-              <MapPin className="h-3 w-3 text-green-500 ml-1" />
-              <span className="text-xs font-medium text-gray-700">Ref:</span>
+              <MapPin className="h-3 w-3 text-accent ml-1" />
+              <span className="text-xs font-medium text-foreground">Ref:</span>
               <button
                 onClick={() => setShowReferenceMarkers((v) => !v)}
-                className={`px-2 py-1 text-xs rounded transition-colors ${showReferenceMarkers ? 'bg-green-500 text-white' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                className={`px-2 py-1 text-xs rounded transition-colors ${showReferenceMarkers ? 'bg-accent text-primary-foreground' : 'bg-surface-2 text-muted-foreground hover:bg-surface-3'
                   }`}
               >
                 {showReferenceMarkers ? 'Hide' : 'Show'}
@@ -1101,16 +1239,16 @@ export const PropertyMap: React.FC<PropertyMapProps> = ({
           {/* Legend (compact) */}
           <div className="p-2">
             <div className="flex items-center gap-1 mb-1">
-              <MapPin className="h-3 w-3 text-gray-500" />
-              <span className="text-xs font-medium text-gray-700">Legend:</span>
+              <MapPin className="h-3 w-3 text-muted-foreground" />
+              <span className="text-xs font-medium text-foreground">Legend:</span>
             </div>
-            <div className="grid grid-cols-2 gap-1 text-xs text-gray-600">
+            <div className="grid grid-cols-2 gap-1 text-xs text-muted-foreground">
               <div className="flex items-center gap-1">
-                <div className="w-2 h-2 bg-orange-500 rounded-full" />
+                <div className="w-2 h-2 bg-primary rounded-full" />
                 <span>VT</span>
               </div>
               <div className="flex items-center gap-1">
-                <div className="w-2 h-2 bg-blue-500 rounded-full" />
+                <div className="w-2 h-2 bg-accent rounded-full" />
                 <span>Properties</span>
               </div>
               <div className="flex items-center gap-1">
@@ -1127,7 +1265,7 @@ export const PropertyMap: React.FC<PropertyMapProps> = ({
       </div>
 
       {/* Safety Controls */}
-      <div className="absolute bottom-4 left-4 z-[120] pointer-events-auto">
+      <div className="absolute bottom-4 left-4 z-[12000] pointer-events-auto">
         <SafetyControls
           enabled={safetyOn}
           onToggle={setSafetyOn}
@@ -1140,11 +1278,11 @@ export const PropertyMap: React.FC<PropertyMapProps> = ({
 
 
       {/* Badges (counts) */}
-      <div className="absolute top-2 right-2 z-[120] space-y-1">
-        <div className="bg-white rounded-lg shadow-lg border border-gray-200 px-2 py-1">
-          <div className="flex items-center gap-1">
-            <div className="w-2 h-2 bg-blue-500 rounded-full" />
-            <span className="text-xs font-medium text-gray-800">
+      <div className="absolute top-2 right-2 z-[15000] space-y-1 pointer-events-auto">
+        <div className="bg-surface/95 backdrop-blur rounded-lg shadow-lg border border-border px-2 py-1">
+          <div className="flex items-center gap-1 text-xs text-foreground font-medium">
+            <div className="w-2 h-2 bg-accent rounded-full" />
+            <span>
               {(mapProperties.length > 0 ? mapProperties : properties || []).filter(
                 (p) => p.latitude && p.longitude
               ).length}{' '}
@@ -1153,7 +1291,7 @@ export const PropertyMap: React.FC<PropertyMapProps> = ({
           </div>
         </div>
         {incidentCount !== null && safetyOn && (
-          <div className="bg-white rounded-lg shadow-lg border border-gray-200 px-2 py-1 text-xs">
+          <div className="bg-surface/95 backdrop-blur rounded-lg shadow-lg border border-border px-2 py-1 text-xs text-foreground">
             {incidentCount} incidents in view
           </div>
         )}

@@ -12,11 +12,14 @@ import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Slider } from "@/components/ui/slider";
 import { Progress } from "@/components/ui/progress";
 import { Separator } from "@/components/ui/separator";
-import { User, Mail, Shield, Calendar, Edit, Save, X, Trash2, AlertTriangle, Target, DollarSign, MapPin, Shield as ShieldIcon, Users, Settings, BarChart3, Bell, BellOff } from "lucide-react";
+import { User, Mail, Shield, Calendar, Edit, Save, X, Trash2, AlertTriangle, Target, DollarSign, MapPin, Shield as ShieldIcon, Users, Settings, BarChart3, Bell, BellOff, Sun, Moon, Monitor } from "lucide-react";
+import type { LucideIcon } from "lucide-react";
 import { toast } from "sonner";
 import { HousingStatus, HousingStatusLabels } from "@/types/HousingStatus";
 import { Switch } from "@/components/ui/switch";
 import { notificationsAPI } from "@/lib/api";
+import { useThemePreferences, ThemePreference } from "@/lib/theme";
+import { useTheme } from "next-themes";
 
 interface ProfileData {
   gender: string;
@@ -65,6 +68,9 @@ const Profile = () => {
   });
   const [emailNotificationsEnabled, setEmailNotificationsEnabled] = useState(true);
   const [loadingPreferences, setLoadingPreferences] = useState(false);
+  const { preference: themePreference, setPreference: setThemePreference, loading: themeLoading } = useThemePreferences();
+  const { resolvedTheme } = useTheme();
+  const [themeSaving, setThemeSaving] = useState(false);
 
   useEffect(() => {
     if (user) {
@@ -274,6 +280,45 @@ const Profile = () => {
   };
 
   const isPrioritiesValid = () => getTotalPriorities() === 100;
+
+  const appearanceOptions: Array<{ value: ThemePreference; label: string; description: string; icon: LucideIcon }> = [
+    {
+      value: "light",
+      label: "Light",
+      description: "Bright, high-contrast experience",
+      icon: Sun,
+    },
+    {
+      value: "dark",
+      label: "Dark",
+      description: "Low-light friendly interface",
+      icon: Moon,
+    },
+    {
+      value: "system",
+      label: "System",
+      description: "Match your device settings",
+      icon: Monitor,
+    },
+  ];
+
+  const handleThemePreferenceChange = async (value: ThemePreference) => {
+    try {
+      setThemeSaving(true);
+      await setThemePreference(value);
+      const message =
+        value === "system"
+          ? "Theme now follows your device setting"
+          : `Theme updated to ${value.charAt(0).toUpperCase() + value.slice(1)} mode`;
+      toast.success(message);
+    } catch (error) {
+      console.error("Error updating theme preference:", error);
+      toast.error("Failed to update theme preference");
+    } finally {
+      setThemeSaving(false);
+    }
+  };
+
 
   const handleDelete = async () => {
     try {
@@ -664,49 +709,116 @@ const Profile = () => {
                 )}
               </div>
 
-              {/* Notification Settings Section */}
-              <div className="pt-4 border-t">
-                <div className="flex items-center justify-between mb-4">
-                  <div>
+            </CardContent>
+          </Card>
+
+          <div className="mt-6 grid gap-6">
+            <Card>
+              <CardContent className="space-y-6 p-6">
+                {/* Appearance Section */}
+                <div>
+                  <div className="flex items-center justify-between mb-4">
                     <h3 className="text-lg font-semibold flex items-center gap-2">
-                      <Bell className="h-5 w-5" />
-                      Notification Settings
+                      <Sun className="h-5 w-5" />
+                      Appearance
                     </h3>
-                    <p className="text-sm text-muted-foreground mt-1">
-                      Control your email notification preferences
+                    <Badge variant="outline" className="uppercase tracking-wide">
+                      Active: {resolvedTheme === "dark" ? "Dark" : "Light"}
+                    </Badge>
+                  </div>
+                  <p className="text-sm text-muted-foreground mb-4">
+                    Personalize HokieNest with light or dark mode. Your preference syncs anywhere you sign in.
+                  </p>
+                  <Select
+                    value={themePreference}
+                    onValueChange={(value) => handleThemePreferenceChange(value as ThemePreference)}
+                    disabled={themeSaving || themeLoading}
+                  >
+                    <SelectTrigger className="bg-surface-2 border-surface-3">
+                      <SelectValue placeholder="Choose a theme" />
+                    </SelectTrigger>
+                    <SelectContent className="z-[1000]">
+                      {appearanceOptions.map((option) => (
+                        <SelectItem key={option.value} value={option.value}>
+                          <div className="flex items-start gap-3">
+                            <option.icon className="mt-1 h-4 w-4" />
+                            <div>
+                              <p className="font-medium">{option.label}</p>
+                              <p className="text-xs text-muted-foreground">{option.description}</p>
+                            </div>
+                          </div>
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <div className="flex items-center justify-between mt-4">
+                    <p className="text-xs text-muted-foreground">
+                      {themeLoading
+                        ? "Loading your saved preference..."
+                        : themeSaving
+                          ? "Saving your theme preference..."
+                          : "Theme preference updates instantly across devices"}
                     </p>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => handleThemePreferenceChange("system")}
+                      disabled={themeSaving || themeLoading || themePreference === "system"}
+                      className="gap-2"
+                    >
+                      <Monitor className="h-4 w-4" />
+                      Use System Default
+                    </Button>
                   </div>
                 </div>
-                
-                <div className="flex items-center justify-between p-4 bg-muted/50 rounded-lg">
-                  <div className="flex items-center gap-3">
-                    {emailNotificationsEnabled ? (
-                      <Bell className="h-5 w-5 text-primary" />
-                    ) : (
-                      <BellOff className="h-5 w-5 text-muted-foreground" />
-                    )}
+
+                <Separator />
+
+                {/* Notification Settings Section */}
+                <div>
+                  <div className="flex items-center justify-between mb-4">
                     <div>
-                      <p className="font-medium">Email Notifications</p>
-                      <p className="text-sm text-muted-foreground">
-                        {emailNotificationsEnabled
-                          ? 'You will receive email notifications for messages, connections, and matches'
-                          : 'All email notifications are currently muted'}
+                      <h3 className="text-lg font-semibold flex items-center gap-2">
+                        <Bell className="h-5 w-5" />
+                        Notification Settings
+                      </h3>
+                      <p className="text-sm text-muted-foreground mt-1">
+                        Control your email notification preferences
                       </p>
                     </div>
                   </div>
-                  <Switch
-                    checked={emailNotificationsEnabled}
-                    onCheckedChange={handleToggleEmailNotifications}
-                    disabled={loadingPreferences}
-                  />
+                  
+                  <div className="flex items-center justify-between p-4 bg-muted/50 rounded-lg">
+                    <div className="flex items-center gap-3">
+                      {emailNotificationsEnabled ? (
+                        <Bell className="h-5 w-5 text-primary" />
+                      ) : (
+                        <BellOff className="h-5 w-5 text-muted-foreground" />
+                      )}
+                      <div>
+                        <p className="font-medium">Email Notifications</p>
+                        <p className="text-sm text-muted-foreground">
+                          {emailNotificationsEnabled
+                            ? 'You will receive email notifications for messages, connections, and matches'
+                            : 'All email notifications are currently muted'}
+                        </p>
+                      </div>
+                    </div>
+                    <Switch
+                      checked={emailNotificationsEnabled}
+                      onCheckedChange={handleToggleEmailNotifications}
+                      disabled={loadingPreferences}
+                    />
+                  </div>
                 </div>
-              </div>
 
-              {/* Delete Account Section */}
-              <div className="pt-4 border-t">
+                <Separator />
+
+                {/* Delete Account Section */}
                 <div className="flex items-center justify-between">
                   <div>
-                    <h3 className="text-lg font-semibold text-destructive">
+                    <h3 className="text-lg font-semibold text-destructive flex items-center gap-2">
+                      <AlertTriangle className="h-5 w-5" />
                       Danger Zone
                     </h3>
                     <p className="text-sm text-muted-foreground">
@@ -715,8 +827,8 @@ const Profile = () => {
                   </div>
                   <Dialog open={isDeleting} onOpenChange={setIsDeleting}>
                     <DialogTrigger asChild>
-                      <Button variant="destructive" size="sm">
-                        <Trash2 className="h-4 w-4 mr-2" />
+                      <Button variant="destructive" size="sm" className="gap-2">
+                        <Trash2 className="h-4 w-4" />
                         Delete Account
                       </Button>
                     </DialogTrigger>
@@ -755,9 +867,9 @@ const Profile = () => {
                     </DialogContent>
                   </Dialog>
                 </div>
-              </div>
-            </CardContent>
-          </Card>
+              </CardContent>
+            </Card>
+          </div>
         </div>
       </div>
     </div>

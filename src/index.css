@@ -1,3 +1,13 @@
+.leaflet-pane.leaflet-popup-pane {
+  z-index: 999999 !important;
+}
+
+.leaflet-popup,
+.leaflet-popup-content-wrapper,
+.leaflet-popup-tip {
+  position: relative;
+  z-index: 999999 !important;
+}
 /* Fonts */
 @import url('https://fonts.googleapis.com/css2?family=Source+Sans+Pro:wght@300;400;600;700&display=swap');
 
@@ -62,6 +72,15 @@
     --ring: var(--primary);
     --destructive: var(--error);
     --destructive-foreground: 0 0% 100%;
+    --map-control-bg: var(--surface);
+    --map-control-border: var(--surface-3);
+    --map-control-text: var(--foreground);
+    --map-popup-bg: var(--surface);
+    --map-popup-text: var(--foreground);
+    --map-popup-subtext: var(--muted);
+    --map-marker-primary: 215 88% 56%;
+    --map-marker-selected: 215 88% 46%;
+    --map-marker-accent: 215 88% 63%;
 
     /* Design Tokens */
     --radius-sm: 4px;
@@ -83,6 +102,45 @@
     --transition-fast: 150ms cubic-bezier(0.25, 0.46, 0.45, 0.94);
     --transition-normal: 250ms cubic-bezier(0.25, 0.46, 0.45, 0.94);
     --transition-slow: 350ms cubic-bezier(0.25, 0.46, 0.45, 0.94);
+  }
+
+  .dark {
+    color-scheme: dark;
+    --background: 230 21% 8%;
+    --surface: 230 18% 12%;
+    --surface-2: 230 16% 16%;
+    --surface-3: 230 14% 20%;
+    --foreground: 0 0% 96%;
+    --muted: 230 10% 70%;
+    --muted-dark: 230 10% 75%;
+    --card: 230 18% 12%;
+    --card-foreground: var(--foreground);
+    --popover: 230 18% 12%;
+    --popover-foreground: var(--foreground);
+    --primary: 20 86% 55%;
+    --primary-dark: 19 82% 45%;
+    --primary-light: 20 96% 66%;
+    --accent: 36 92% 62%;
+    --accent-light: 36 96% 72%;
+    --accent-dark: 29 94% 54%;
+    --border: 230 16% 26%;
+    --input: 230 16% 20%;
+    --ring: 36 100% 70%;
+    --destructive: 0 70% 50%;
+    --destructive-foreground: 0 0% 100%;
+    --map-control-bg: 230 18% 16%;
+    --map-control-border: 230 16% 24%;
+    --map-control-text: var(--foreground);
+    --map-popup-bg: 230 18% 18%;
+    --map-popup-text: var(--foreground);
+    --map-popup-subtext: 230 10% 70%;
+    --map-marker-primary: 215 88% 60%;
+    --map-marker-selected: 215 88% 50%;
+    --map-marker-accent: 215 88% 67%;
+    --shadow-xs: 0 1px 2px rgba(8, 8, 10, 0.35);
+    --shadow-sm: 0 2px 6px rgba(8, 8, 10, 0.4);
+    --shadow-md: 0 8px 18px rgba(8, 8, 10, 0.45);
+    --shadow-lg: 0 12px 28px rgba(8, 8, 10, 0.5);
   }
 
   * {
@@ -159,4 +217,48 @@
   .vt-community-badge:hover {
     transform: scale(1.03);
   }
+}
+
+/* Leaflet theming */
+.leaflet-popup-content-wrapper {
+  background-color: hsl(var(--map-popup-bg));
+  color: hsl(var(--map-popup-text));
+  border: 1px solid hsl(var(--border));
+  box-shadow: var(--shadow-md);
+}
+
+.leaflet-popup-content {
+  color: hsl(var(--map-popup-text));
+}
+
+.leaflet-popup-content p {
+  color: hsl(var(--map-popup-subtext));
+}
+
+.leaflet-popup-tip {
+  background-color: hsl(var(--map-popup-bg));
+  border: 1px solid hsl(var(--border));
+}
+
+.leaflet-control {
+  background: hsl(var(--map-control-bg)) !important;
+  color: hsl(var(--map-control-text)) !important;
+  border: 1px solid hsl(var(--map-control-border)) !important;
+  box-shadow: var(--shadow-sm) !important;
+}
+
+.leaflet-bar a,
+.leaflet-bar a:hover {
+  background: hsl(var(--map-control-bg));
+  color: hsl(var(--map-control-text));
+  border-bottom: 1px solid hsl(var(--map-control-border));
+}
+
+.leaflet-container {
+  background: hsl(var(--background));
+  color: hsl(var(--foreground));
+}
+
+.dark .leaflet-tile {
+  filter: brightness(0.55) saturate(0.85);
 }
