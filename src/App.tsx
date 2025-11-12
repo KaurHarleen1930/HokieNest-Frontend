@@ -104,6 +104,11 @@ const App = () => (
                   <Admin />
                 </ProtectedRoute>
               } />
+              <Route path="/messages" element={
+                <ProtectedRoute>
+                  <Messages />
+                </ProtectedRoute>
+              } />
               <Route path="/conversation/:conversationId" element={
                <ProtectedRoute>
                <Conversation />

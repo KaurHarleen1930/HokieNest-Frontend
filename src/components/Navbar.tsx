@@ -128,15 +128,12 @@ export function Navbar() {
               >
                 Dashboard
               </Link>
-<<<<<<< HEAD
-=======
               <Link
               to="/community"
               className="text-foreground hover:text-accent transition-colors font-medium"
             >
               Community
              </Link>
->>>>>>> 03f9668 (Community Post Backend and frontend ready and dropdown on roommate cards)
             </>
           )}
         </div>
