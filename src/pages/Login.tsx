@@ -9,6 +9,7 @@ import { useAuth } from "@/lib/auth";
 import { Home, AlertCircle, Eye, EyeOff, Mail } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
+import { supabase } from "@/lib/supabase";
 
 export default function Login() {
   const [email, setEmail] = useState("");
@@ -57,33 +58,42 @@ export default function Login() {
   }, []);
 
   const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setError("");
-    setIsLoading(true);
+  e.preventDefault();
+  setError("");
+  setIsLoading(true);
 
-    // Validate VT email
-    if (!email.endsWith('@vt.edu')) {
-      setError("Please use your Virginia Tech email address (@vt.edu)");
-      setIsLoading(false);
-      return;
+  if (!email.endsWith('@vt.edu')) {
+    setError("Please use your Virginia Tech email address (@vt.edu)");
+    setIsLoading(false);
+    return;
+  }
+
+  try {
+    // Backend login
+    await login(email, password);
+
+    // 👇 Add Supabase login in parallel
+    const { data, error } = await supabase.auth.signInWithPassword({
+      email,
+      password,
+    });
+    if (error) {
+      console.warn("Supabase login skipped:", error.message);
+    } else {
+      console.log("✅ Supabase session established for:", data.user?.email);
     }
 
-    try {
-      await login(email, password);
-      navigate(from, { replace: true });
-    } catch (err) {
-      const errorMessage = err instanceof Error ? err.message : "Login failed";
-      setError(errorMessage);
-
-      // Show resend button if email is not verified
-      if (errorMessage.toLowerCase().includes('verify')) {
-        setShowResendVerification(true);
-      }
-    } finally {
-      setIsLoading(false);
+    navigate(from, { replace: true });
+  } catch (err) {
+    const errorMessage = err instanceof Error ? err.message : "Login failed";
+    setError(errorMessage);
+    if (errorMessage.toLowerCase().includes('verify')) {
+      setShowResendVerification(true);
     }
-  };
-
+  } finally {
+    setIsLoading(false);
+  }
+};
 
   const handleResendVerification = async () => {
     if (!email) {

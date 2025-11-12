@@ -1,15 +1,24 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { EmptyState } from "@/components/ui/empty-state";
 import { ConnectionRequestModal } from "@/components/ConnectionRequestModal";
 import { Heart, Star, Users, DollarSign, Clock, Home, Target, AlertCircle, Settings } from "lucide-react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { useAuth } from "@/lib/auth";
 import { roommatesAPI } from "@/lib/api";
 import { useToast } from "@/hooks/use-toast";
 import { HousingStatus, HousingStatusLabels } from "@/types/HousingStatus";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+
+type SortValue = "default" | "score_desc" | "score_asc";
 
 interface RoommateProfile {
   id: string;
@@ -42,17 +51,40 @@ interface RoommateProfile {
 
 export default function RoommateMatching() {
   const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
   const { isAuthenticated } = useAuth();
   const { toast } = useToast();
+
   const [roommates, setRoommates] = useState<RoommateProfile[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [selectedRoommate, setSelectedRoommate] = useState<RoommateProfile | null>(null);
+  const [selectedRoommate, setSelectedRoommate] =
+    useState<RoommateProfile | null>(null);
   const [isConnectionModalOpen, setIsConnectionModalOpen] = useState(false);
 
-  useEffect(() => {
-    console.log("RoommateMatching: useEffect running, isAuthenticated:", isAuthenticated);
+  // --- URL params ---
+  const sortParam = (searchParams.get("sort") as SortValue) || "default";
+  const rawStatus = searchParams.get("status");
+  const statusParam: HousingStatus | undefined =
+    rawStatus && Object.values(HousingStatus).includes(rawStatus as HousingStatus)
+      ? (rawStatus as HousingStatus)
+      : undefined;
 
+  const setSort = (v: SortValue) => {
+    const p = new URLSearchParams(searchParams);
+    if (v === "default") p.delete("sort");
+    else p.set("sort", v);
+    setSearchParams(p, { replace: true });
+  };
+
+  const setStatus = (v?: HousingStatus) => {
+    const p = new URLSearchParams(searchParams);
+    if (!v) p.delete("status");
+    else p.set("status", v);
+    setSearchParams(p, { replace: true });
+  };
+
+  useEffect(() => {
     if (!isAuthenticated) {
       setLoading(false);
       return;
@@ -63,32 +95,32 @@ export default function RoommateMatching() {
         setLoading(true);
         setError(null);
 
-        console.log("RoommateMatching: Fetching roommate matches...");
         const response = await roommatesAPI.findMatches(50);
+        const statuses = Object.values(HousingStatus);
+        const enrichedMatches: RoommateProfile[] = response.matches.map(
+          (r: any) => ({
+            ...r,
+            housing_status:
+              statuses[Math.floor(Math.random() * statuses.length)],
+          })
+        );
 
-        console.log("RoommateMatching: Received matches", response);
+        setRoommates(enrichedMatches);
 
-        // TEMP: Add random housing statuses for demo
-         const statuses = Object.values(HousingStatus);
-        const enrichedMatches = response.matches.map((r: any) => ({
-          ...r,
-          housing_status: statuses[Math.floor(Math.random() * statuses.length)],
-     }));
-
-setRoommates(enrichedMatches);
         if (response.matches.length === 0) {
           toast({
             title: "No matches found",
-            description: "Complete your roommate questionnaire to find compatible roommates.",
+            description:
+              "Complete your roommate questionnaire to find compatible roommates.",
           });
         }
       } catch (error: any) {
         console.error("RoommateMatching: Error fetching matches", error);
         setError(error.message || "Failed to fetch roommate matches");
-
         toast({
           title: "Error",
-          description: error.message || "Failed to fetch roommate matches. Please try again.",
+          description:
+            error.message || "Failed to fetch roommate matches. Please try again.",
           variant: "destructive",
         });
       } finally {
@@ -98,6 +130,27 @@ setRoommates(enrichedMatches);
 
     fetchRoommates();
   }, [isAuthenticated, toast]);
+
+  // --- Derived data: sort + filter ---
+  const visibleRoommates = useMemo(() => {
+    let data = roommates;
+
+    if (statusParam) {
+      data = data.filter((r) => r.housing_status === statusParam);
+    }
+
+    if (sortParam === "score_desc") {
+      data = [...data].sort(
+        (a, b) => b.compatibilityScore - a.compatibilityScore
+      );
+    } else if (sortParam === "score_asc") {
+      data = [...data].sort(
+        (a, b) => a.compatibilityScore - b.compatibilityScore
+      );
+    }
+
+    return data;
+  }, [roommates, sortParam, statusParam]);
 
   const getCompatibilityColor = (score: number) => {
     if (score >= 90) return "text-green-600 bg-green-50";
@@ -123,8 +176,7 @@ setRoommates(enrichedMatches);
     setSelectedRoommate(null);
   };
 
-  console.log("RoommateMatching: Render", { loading, roommatesCount: roommates.length, isAuthenticated, error });
-
+  // --- Rendering conditions ---
   if (!isAuthenticated) {
     return (
       <div className="container mx-auto px-4 py-8">
@@ -134,7 +186,7 @@ setRoommates(enrichedMatches);
           description="Please log in to find compatible roommates"
           action={{
             label: "Log In",
-            onClick: () => navigate('/login')
+            onClick: () => navigate("/login"),
           }}
         />
       </div>
@@ -150,7 +202,7 @@ setRoommates(enrichedMatches);
           description={error}
           action={{
             label: "Try Again",
-            onClick: () => window.location.reload()
+            onClick: () => window.location.reload(),
           }}
         />
       </div>
@@ -161,7 +213,9 @@ setRoommates(enrichedMatches);
     return (
       <div className="container mx-auto px-4 py-8">
         <div className="mb-8">
-          <h1 className="text-3xl font-bold text-foreground mb-2">Find Your Perfect Roommate</h1>
+          <h1 className="text-3xl font-bold text-foreground mb-2">
+            Find Your Perfect Roommate
+          </h1>
           <p className="text-muted">Loading potential roommates...</p>
         </div>
         <div className="flex items-center justify-center py-12">
@@ -183,33 +237,33 @@ setRoommates(enrichedMatches);
           description="Complete your roommate questionnaire to find compatible roommates"
           action={{
             label: "Complete Questionnaire",
-            onClick: () => navigate('/roommate-questionnaire')
+            onClick: () => navigate("/roommate-questionnaire"),
           }}
         />
       </div>
     );
   }
 
+  // --- Main page render ---
   return (
     <div className="container mx-auto px-4 py-8">
       {/* Header */}
       <div className="mb-8">
         <div className="flex items-center justify-between mb-4">
           <div>
-            <h1 className="text-3xl font-bold text-foreground mb-2">Find Your Perfect Roommate</h1>
+            <h1 className="text-3xl font-bold text-foreground mb-2">
+              Find Your Perfect Roommate
+            </h1>
             <p className="text-muted">
-              {roommates.length} potential roommate{roommates.length !== 1 ? 's' : ''} found
-              {roommates.length > 0 && (
-                <span className="text-xs text-muted-foreground ml-2">
-                  (showing all available matches)
-                </span>
-              )}
+              {visibleRoommates.length} of {roommates.length} potential roommate
+              {roommates.length !== 1 ? "s" : ""} shown
             </p>
           </div>
+
           <div className="flex gap-2">
             <Button
               variant="outline"
-              onClick={() => navigate('/priority-ranking')}
+              onClick={() => navigate("/priority-ranking")}
               className="gap-2"
             >
               <Settings className="h-4 w-4" />
@@ -217,7 +271,7 @@ setRoommates(enrichedMatches);
             </Button>
             <Button
               variant="outline"
-              onClick={() => navigate('/roommate-profile')}
+              onClick={() => navigate("/roommate-profile")}
               className="gap-2"
             >
               <Target className="h-4 w-4" />
@@ -225,44 +279,115 @@ setRoommates(enrichedMatches);
             </Button>
           </div>
         </div>
+
+        {/* Sort + Filter Controls */}
+        <div className="flex flex-wrap items-center gap-3">
+          {/* Sort */}
+          <div className="w-56">
+            <Select value={sortParam} onValueChange={(v) => setSort(v as SortValue)}>
+              <SelectTrigger aria-label="Sort by matching score">
+                <SelectValue placeholder="Sort" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="default">Default</SelectItem>
+                <SelectItem value="score_desc">High to Low</SelectItem>
+                <SelectItem value="score_asc">Low to High</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+
+          {/* Filter */}
+          <div className="w-64">
+            <Select
+              value={statusParam ?? "ALL"}
+              onValueChange={(v) =>
+                setStatus(v === "ALL" ? undefined : (v as HousingStatus))
+              }
+            >
+              <SelectTrigger aria-label="Filter by housing status">
+                <SelectValue placeholder="Filter by housing status" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="ALL">All statuses</SelectItem>
+                <SelectItem value={HousingStatus.SEARCHING}>
+                  {HousingStatusLabels[HousingStatus.SEARCHING]}
+                </SelectItem>
+                <SelectItem value={HousingStatus.HAVE_HOUSING}>
+                  {HousingStatusLabels[HousingStatus.HAVE_HOUSING]}
+                </SelectItem>
+                <SelectItem value={HousingStatus.SEEKING_ROOMMATE}>
+                  {HousingStatusLabels[HousingStatus.SEEKING_ROOMMATE]}
+                </SelectItem>
+                <SelectItem value={HousingStatus.NOT_SEARCHING}>
+                  {HousingStatusLabels[HousingStatus.NOT_SEARCHING]}
+                </SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+
+          {(statusParam || sortParam !== "default") && (
+            <Button
+              variant="ghost"
+              className="px-3"
+              onClick={() => {
+                const p = new URLSearchParams(searchParams);
+                p.delete("sort");
+                p.delete("status");
+                setSearchParams(p, { replace: true });
+              }}
+            >
+              Clear
+            </Button>
+          )}
+        </div>
       </div>
 
       {/* Roommate Cards */}
       <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
-        {roommates.map((roommate) => (
-          <Card key={roommate.id} className="overflow-hidden hover:shadow-lg transition-shadow">
+        {visibleRoommates.map((roommate) => (
+          <Card
+            key={roommate.id}
+            className="overflow-hidden hover:shadow-lg transition-shadow"
+          >
             <CardHeader className="pb-4 relative">
-              {/* Housing Status & Match Score Container */}
               <div className="absolute top-3 right-3 flex flex-col items-end gap-1">
-               {roommate.housing_status && (
-                <Badge
+                {roommate.housing_status && (
+                  <Badge
                     variant="secondary"
                     className="text-xs bg-primary/10 text-primary border-0"
-                 >
-                    {HousingStatusLabels[roommate.housing_status]}
-                </Badge>
-                )}
-                 <Badge
-                   className={`${getCompatibilityColor(roommate.compatibilityScore)} border-0 text-xs`}
                   >
-                   <Star className="h-3 w-3 mr-1" />
-                      {roommate.compatibilityScore}%
+                    {HousingStatusLabels[roommate.housing_status]}
                   </Badge>
-               </div>
+                )}
+                <Badge
+                  className={`${getCompatibilityColor(
+                    roommate.compatibilityScore
+                  )} border-0 text-xs`}
+                >
+                  <Star className="h-3 w-3 mr-1" />
+                  {roommate.compatibilityScore}%
+                </Badge>
+              </div>
 
               <div>
-              <CardTitle className="text-lg">{roommate.name}</CardTitle>
-              <p className="text-sm text-muted-foreground">{roommate.major}</p>
-              <p className="text-xs text-muted-foreground">{roommate.age} years old</p>
-             </div>
-           </CardHeader>
+                <CardTitle className="text-lg">{roommate.name}</CardTitle>
+                <p className="text-sm text-muted-foreground">{roommate.major}</p>
+                <p className="text-xs text-muted-foreground">
+                  {roommate.age} years old
+                </p>
+              </div>
+            </CardHeader>
 
             <CardContent className="space-y-4">
-              {/* Compatibility Info */}
+              {/* Compatibility */}
               <div className="p-3 rounded-lg bg-muted/50">
                 <div className="flex items-center justify-between mb-2">
                   <span className="text-sm font-medium">Compatibility</span>
-                  <span className={`text-sm font-semibold ${getCompatibilityColor(roommate.compatibilityScore).split(' ')[0]}`}>
+                  <span
+                    className={`text-sm font-semibold ${
+                      getCompatibilityColor(roommate.compatibilityScore).split(" ")[0]
+                    }`}
+                  >
                     {getCompatibilityLabel(roommate.compatibilityScore)}
                   </span>
                 </div>
@@ -274,11 +399,14 @@ setRoommates(enrichedMatches);
                 </div>
               </div>
 
-              {/* Key Preferences */}
+              {/* Preferences */}
               <div className="space-y-2">
                 <div className="flex items-center gap-2 text-sm">
                   <DollarSign className="h-4 w-4 text-muted-foreground" />
-                  <span>Budget: ${roommate.preferences.budgetRange[0]}-${roommate.preferences.budgetRange[1]}/mo</span>
+                  <span>
+                    Budget: ${roommate.preferences.budgetRange[0]}-
+                    {roommate.preferences.budgetRange[1]}/mo
+                  </span>
                 </div>
                 <div className="flex items-center gap-2 text-sm">
                   <Clock className="h-4 w-4 text-muted-foreground" />
@@ -291,20 +419,27 @@ setRoommates(enrichedMatches);
                 {roommate.preferences.moveInDate && (
                   <div className="flex items-center gap-2 text-sm">
                     <Clock className="h-4 w-4 text-muted-foreground" />
-                    <span>Move-in: {new Date(roommate.preferences.moveInDate).toLocaleDateString()}</span>
+                    <span>
+                      Move-in:{" "}
+                      {new Date(
+                        roommate.preferences.moveInDate
+                      ).toLocaleDateString()}
+                    </span>
                   </div>
                 )}
                 {roommate.preferences.workFromHomeDays > 0 && (
                   <div className="flex items-center gap-2 text-sm">
                     <Home className="h-4 w-4 text-muted-foreground" />
-                    <span>WFH: {roommate.preferences.workFromHomeDays} days/week</span>
+                    <span>
+                      WFH: {roommate.preferences.workFromHomeDays} days/week
+                    </span>
                   </div>
                 )}
               </div>
 
-              {/* Action Buttons */}
+              {/* Action */}
               <div className="flex gap-2 pt-2">
-                <Button 
+                <Button
                   className="flex-1 gap-2"
                   onClick={() => handleConnectClick(roommate)}
                 >

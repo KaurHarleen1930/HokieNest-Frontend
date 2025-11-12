@@ -1,6 +1,7 @@
-import { Router, Request, Response } from 'express';
-import { supabase } from '../lib/supabase';
-import { authenticateToken } from '../middleware/auth';
+import { Router, Request, Response } from "express";
+
+import { authenticateToken } from "../middleware/auth";
+import { supabase, supabaseAdmin } from '../lib/supabase';
 
 const router = Router();
 
@@ -9,14 +10,17 @@ const router = Router();
  * Query: propertyIds (comma-separated or repeating param)
  * Returns: { [propertyId]: count }
  */
-router.get('/property-vt-counts', async (req: Request, res: Response) => {
+router.get("/property-vt-counts", async (req: Request, res: Response) => {
   try {
     let propertyIds: string[] = [];
     if (req.query.propertyIds) {
       if (Array.isArray(req.query.propertyIds)) {
         propertyIds = (req.query.propertyIds as string[]).filter(Boolean);
-      } else if (typeof req.query.propertyIds === 'string') {
-        propertyIds = (req.query.propertyIds as string).split(',').map(s => s.trim()).filter(Boolean);
+      } else if (typeof req.query.propertyIds === "string") {
+        propertyIds = (req.query.propertyIds as string)
+          .split(",")
+          .map((s) => s.trim())
+          .filter(Boolean);
       }
     }
 
@@ -24,9 +28,9 @@ router.get('/property-vt-counts', async (req: Request, res: Response) => {
 
     // Get housing preferences for these properties
     const { data: prefs, error: prefsError } = await supabase
-      .from('housing_preferences')
-      .select('user_id,current_property_id')
-      .in('current_property_id', propertyIds);
+      .from("housing_preferences")
+      .select("user_id,current_property_id")
+      .in("current_property_id", propertyIds);
 
     if (prefsError) throw prefsError;
     if (!prefs || prefs.length === 0) return res.json({});
@@ -35,10 +39,10 @@ router.get('/property-vt-counts', async (req: Request, res: Response) => {
 
     // Get users that are VT (email ends with @vt.edu)
     const { data: users } = await supabase
-      .from('users')
-      .select('user_id,email')
-      .in('user_id', userIds)
-      .ilike('email', '%@vt.edu');
+      .from("users")
+      .select("user_id,email")
+      .in("user_id", userIds)
+      .ilike("email", "%@vt.edu");
 
     const vtUserIds = new Set((users || []).map((u: any) => u.user_id));
 
@@ -54,8 +58,10 @@ router.get('/property-vt-counts', async (req: Request, res: Response) => {
 
     res.json(counts);
   } catch (error: any) {
-    console.error('Error fetching VT counts:', error);
-    res.status(500).json({ message: 'Failed to fetch VT counts', error: error?.message || String(error) });
+    console.error("Error fetching VT counts:", error);
+    res
+      .status(500)
+      .json({ message: "Failed to fetch VT counts", error: error?.message });
   }
 });
 
@@ -63,14 +69,14 @@ router.get('/property-vt-counts', async (req: Request, res: Response) => {
  * Community posts for properties
  */
 // Get posts for a property
-router.get('/properties/:id/posts', async (req: Request, res: Response) => {
+router.get("/properties/:id/posts", async (req: Request, res: Response) => {
   try {
     const propertyId = req.params.id;
     const { data: posts, error } = await supabase
-      .from('property_community_posts')
-      .select('id, user_id, content, created_at')
-      .eq('property_id', propertyId)
-      .order('created_at', { ascending: false })
+      .from("property_community_posts")
+      .select("id, user_id, content, created_at")
+      .eq("property_id", propertyId)
+      .order("created_at", { ascending: false })
       .limit(50);
 
     if (error) throw error;
@@ -78,9 +84,9 @@ router.get('/properties/:id/posts', async (req: Request, res: Response) => {
     // Fetch user info for the posts
     const userIds = [...new Set((posts || []).map((p: any) => p.user_id))];
     const { data: users } = await supabase
-      .from('users')
-      .select('user_id, first_name, last_name, email')
-      .in('user_id', userIds);
+      .from("users")
+      .select("user_id, first_name, last_name, email")
+      .in("user_id", userIds);
 
     const usersById = new Map((users || []).map((u: any) => [u.user_id, u]));
 
@@ -94,47 +100,94 @@ router.get('/properties/:id/posts', async (req: Request, res: Response) => {
 
     res.json(enriched);
   } catch (error: any) {
-    console.error('Error fetching property posts:', error);
-    res.status(500).json({ message: 'Failed to fetch posts', error: error?.message || String(error) });
+    console.error("Error fetching property posts:", error);
+    res
+      .status(500)
+      .json({ message: "Failed to fetch posts", error: error?.message });
   }
 });
 
-// Create a post (authenticated)
-router.post('/properties/:id/posts', authenticateToken as any, async (req: Request & any, res: Response) => {
-  try {
-    const propertyId = req.params.id;
-    const userId = req.user?.id;
-    const { content } = req.body;
+/**
+ * POST /api/v1/community/properties/:id/posts
+ * Create a new post for a property (authenticated)
+ */
+router.post(
+  "/properties/:id/posts",
+  authenticateToken as any,
+  async (req: Request & any, res: Response) => {
+    try {
+      const propertyId = req.params.id;
+      const userId = req.user?.id; // integer backend user_id
+      const { content } = req.body;
 
-    if (!userId) return res.status(401).json({ message: 'Unauthorized' });
-    if (!content || typeof content !== 'string' || content.trim().length === 0) {
-      return res.status(400).json({ message: 'Content is required' });
+      if (!userId) {
+        return res.status(401).json({ message: "Unauthorized" });
+      }
+      if (!content || typeof content !== "string" || content.trim().length === 0) {
+        return res.status(400).json({ message: "Content is required" });
+      }
+
+      // Look up the backend user's email
+      const { data: appUser, error: userErr } = await supabase
+        .from("users")
+        .select("email")
+        .eq("user_id", userId)
+        .single();
+
+      if (userErr || !appUser?.email) {
+        console.error("Could not resolve backend user email:", userErr || appUser);
+        return res.status(400).json({ message: "Could not resolve user email" });
+      }
+
+      // Ensure user is VT
+      if (!appUser.email.endsWith("@vt.edu")) {
+        return res.status(403).json({
+          message: "Community posts are only available to Virginia Tech users",
+        });
+      }
+
+      // ✅ Get Supabase Auth UUID for that email (v2-compatible)
+const { data: userList, error: listErr } = await supabaseAdmin.auth.admin.listUsers();
+
+if (listErr) {
+  console.error("Supabase admin.listUsers failed:", listErr);
+  return res.status(500).json({ message: "Failed to fetch Supabase users" });
+}
+
+// Find user by email (case-insensitive)
+const authUser = userList?.users?.find(
+  (u: any) => u.email?.toLowerCase() === appUser.email.toLowerCase()
+);
+
+if (!authUser) {
+  console.error("Supabase admin.listUsers → no match for:", appUser.email);
+  return res.status(403).json({ message: "Auth user not found for this email" });
+}
+
+// ✅ Valid Supabase Auth UUID (string)
+const supabaseUuid = authUser.id;
+
+      // Insert the post with UUID author_id
+      const { data: inserted, error } = await supabase
+        .from("property_community_posts")
+        .insert({
+          property_id: propertyId,
+          user_id: supabaseUuid, // ✅ now a valid UUID
+          content,
+        })
+        .select()
+        .single();
+
+      if (error) throw error;
+
+      res.status(201).json(inserted);
+    } catch (error: any) {
+      console.error("Error creating property post:", error?.message || error);
+      res
+        .status(500)
+        .json({ message: "Failed to create post", error: error?.message });
     }
-
-    // Check user is VT (email ends with @vt.edu)
-    const { data: user } = await supabase
-      .from('users')
-      .select('user_id, email')
-      .eq('user_id', userId)
-      .single();
-
-    if (!user || !user.email || !user.email.endsWith('@vt.edu')) {
-      return res.status(403).json({ message: 'Community posts are only available to Virginia Tech users' });
-    }
-
-    const { data: inserted, error } = await supabase
-      .from('property_community_posts')
-      .insert({ property_id: propertyId, user_id: userId, content })
-      .select()
-      .single();
-
-    if (error) throw error;
-
-    res.status(201).json(inserted);
-  } catch (error: any) {
-    console.error('Error creating property post:', error);
-    res.status(500).json({ message: 'Failed to create post', error: error?.message || String(error) });
   }
-});
+);
 
 export { router as communityRoutes };

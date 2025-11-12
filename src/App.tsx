@@ -32,6 +32,12 @@ import Messages from "./pages/Messages";
 import Conversation from "./pages/Conversation";
 import 'leaflet/dist/leaflet.css';
 import PropertyDetailsWithAmenities from '@/components/Property/PropertyDetailsWithAmenities';
+import CommunityPage from "@/pages/CommunityPage";
+import { supabase } from "@/lib/supabase";
+
+supabase.auth.getSession().then(({ data }) => {
+  console.log("🔑 Restored session:", data.session);
+});
 
 const queryClient = new QueryClient();
 
@@ -98,20 +104,17 @@ const App = () => (
                   <Admin />
                 </ProtectedRoute>
               } />
-              <Route 
-                path="/properties/:id" 
-                element={<PropertyDetailsWithAmenities />} 
-              />
-              <Route path="/messages" element={
-  <ProtectedRoute>
-    <Messages />
-  </ProtectedRoute>
-} />
               <Route path="/conversation/:conversationId" element={
-  <ProtectedRoute>
-    <Conversation />
-  </ProtectedRoute>
-} />
+               <ProtectedRoute>
+               <Conversation />
+              </ProtectedRoute>
+              } />
+
+{/* 👇 New Community Page Route */}
+<Route path="/community" element={<CommunityPage />} />
+
+{/* ⚠️ Keep NotFound LAST */}
+<Route path="*" element={<NotFound />} />
 {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
               <Route path="*" element={<NotFound />} />
                 </Routes>
