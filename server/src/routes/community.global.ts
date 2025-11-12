@@ -24,23 +24,6 @@ router.get("/", async (_req: Request, res: Response) => {
 });
 
 /**
- * Helper: Find Supabase Auth user by email
- */
-async function findAuthUserByEmail(email: string) {
-  const { data, error } = await supabaseAdmin.auth.admin.listUsers();
-
-  if (error) {
-    console.error("listUsers failed:", error);
-    return null;
-  }
-
-  const match = data?.users?.find(
-    (u: any) => u.email?.toLowerCase() === email.toLowerCase()
-  );
-  return match || null;
-}
-
-/**
  * POST /api/v1/community
  * Create a new post
  */
@@ -54,7 +37,7 @@ router.post("/", authenticateToken as any, async (req: any, res: Response) => {
     if (!appUserId)
       return res.status(401).json({ message: "User not authenticated" });
 
-    // 1️⃣ Get backend user email
+    // 1️⃣ Get backend user email to verify VT domain
     const { data: appUser, error: appUserErr } = await supabase
       .from("users")
       .select("email")
@@ -73,19 +56,10 @@ router.post("/", authenticateToken as any, async (req: any, res: Response) => {
       });
     }
 
-    // 3️⃣ Find Auth user by email
-    const authUser = await findAuthUserByEmail(appUser.email);
-    if (!authUser) {
-      console.error("Auth user not found for:", appUser.email);
-      return res.status(403).json({ message: "Auth user not found" });
-    }
-
-    const supabaseUuid = authUser.id;
-
-    // 4️⃣ Insert post using Admin client (bypass RLS)
+    // 3️⃣ Insert post using backend user_id directly
     const { data, error } = await supabaseAdmin
       .from("community_posts")
-      .insert([{ title, content, author_id: supabaseUuid }])
+      .insert([{ title, content, author_id: appUserId }])
       .select()
       .single();
 
@@ -107,16 +81,11 @@ router.put("/:id", authenticateToken as any, async (req: any, res: Response) => 
     const { title, content } = req.body;
     const appUserId = req.user?.id;
 
-    // Resolve UUID
-    const { data: appUser } = await supabase
-      .from("users")
-      .select("email")
-      .eq("user_id", appUserId)
-      .single();
+    if (!appUserId) {
+      return res.status(401).json({ message: "User not authenticated" });
+    }
 
-    const authUser = await findAuthUserByEmail(appUser?.email);
-    const supabaseUuid = authUser?.id;
-
+    // Check if post exists and user is the author
     const { data: post } = await supabase
       .from("community_posts")
       .select("author_id")
@@ -124,9 +93,10 @@ router.put("/:id", authenticateToken as any, async (req: any, res: Response) => 
       .single();
 
     if (!post) return res.status(404).json({ message: "Post not found" });
-    if (post.author_id !== supabaseUuid)
+    if (post.author_id !== appUserId)
       return res.status(403).json({ message: "Not your post" });
 
+    // Update the post
     const { data, error } = await supabaseAdmin
       .from("community_posts")
       .update({ title, content, updated_at: new Date().toISOString() })
@@ -151,15 +121,11 @@ router.delete("/:id", authenticateToken as any, async (req: any, res: Response) 
     const { id } = req.params;
     const appUserId = req.user?.id;
 
-    const { data: appUser } = await supabase
-      .from("users")
-      .select("email")
-      .eq("user_id", appUserId)
-      .single();
+    if (!appUserId) {
+      return res.status(401).json({ message: "User not authenticated" });
+    }
 
-    const authUser = await findAuthUserByEmail(appUser?.email);
-    const supabaseUuid = authUser?.id;
-
+    // Check if post exists and user is the author
     const { data: post } = await supabase
       .from("community_posts")
       .select("author_id")
@@ -167,9 +133,10 @@ router.delete("/:id", authenticateToken as any, async (req: any, res: Response) 
       .single();
 
     if (!post) return res.status(404).json({ message: "Post not found" });
-    if (post.author_id !== supabaseUuid)
+    if (post.author_id !== appUserId)
       return res.status(403).json({ message: "Not your post" });
 
+    // Delete the post
     const { error } = await supabaseAdmin
       .from("community_posts")
       .delete()
@@ -194,19 +161,12 @@ router.post("/:id/flag", authenticateToken as any, async (req: any, res: Respons
     const appUserId = req.user?.id;
 
     if (!reason) return res.status(400).json({ message: "Reason required" });
+    if (!appUserId) return res.status(401).json({ message: "User not authenticated" });
 
-    const { data: appUser } = await supabase
-      .from("users")
-      .select("email")
-      .eq("user_id", appUserId)
-      .single();
-
-    const authUser = await findAuthUserByEmail(appUser?.email);
-    const supabaseUuid = authUser?.id;
-
+    // Insert flag using backend user_id directly
     const { data, error } = await supabaseAdmin
       .from("post_flags")
-      .insert([{ post_id: id, user_id: supabaseUuid, reason }])
+      .insert([{ post_id: id, user_id: appUserId, reason }])
       .select()
       .single();
 
