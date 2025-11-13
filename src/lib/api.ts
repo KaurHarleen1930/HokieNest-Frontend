@@ -340,15 +340,80 @@ export const favoritesAPI = {
 
 
 // Users API (Admin)
+export interface AdminLog {
+  id: string;
+  admin_id: number;
+  action: string;
+  target_user_id: number | null;
+  details: Record<string, any>;
+  ip_address: string | null;
+  user_agent: string | null;
+  created_at: string;
+  admin?: {
+    user_id: number;
+    email: string;
+    first_name: string;
+    last_name: string;
+  };
+  target_user?: {
+    user_id: number;
+    email: string;
+    first_name: string;
+    last_name: string;
+  };
+}
+
+export interface AdminLogsResponse {
+  logs: AdminLog[];
+  total: number;
+  page: number;
+  limit: number;
+}
+
 export const usersAPI = {
-  getAll: (): Promise<User[]> => {
-    return apiRequest<User[]>('/admin/users');
+  getAll: (search?: string): Promise<User[]> => {
+    const url = search ? `/admin/users?search=${encodeURIComponent(search)}` : '/admin/users';
+    return apiRequest<User[]>(url);
   },
 
   suspend: (userId: string): Promise<{ success: boolean }> => {
     return apiRequest<{ success: boolean }>(`/admin/users/${userId}/suspend`, {
       method: 'POST',
     });
+  },
+
+  unsuspend: (userId: string): Promise<{ success: boolean }> => {
+    return apiRequest<{ success: boolean }>(`/admin/users/${userId}/unsuspend`, {
+      method: 'POST',
+    });
+  },
+
+  deleteUser: (userId: string): Promise<{ success: boolean }> => {
+    return apiRequest<{ success: boolean }>(`/admin/users/${userId}`, {
+      method: 'DELETE',
+    });
+  },
+
+  getAdminLogs: (params?: {
+    page?: number;
+    limit?: number;
+    action?: string;
+    adminId?: number;
+    targetUserId?: number;
+    startDate?: string;
+    endDate?: string;
+  }): Promise<AdminLogsResponse> => {
+    const queryParams = new URLSearchParams();
+    if (params?.page) queryParams.append('page', params.page.toString());
+    if (params?.limit) queryParams.append('limit', params.limit.toString());
+    if (params?.action) queryParams.append('action', params.action);
+    if (params?.adminId) queryParams.append('adminId', params.adminId.toString());
+    if (params?.targetUserId) queryParams.append('targetUserId', params.targetUserId.toString());
+    if (params?.startDate) queryParams.append('startDate', params.startDate);
+    if (params?.endDate) queryParams.append('endDate', params.endDate);
+
+    const url = `/admin/logs${queryParams.toString() ? `?${queryParams.toString()}` : ''}`;
+    return apiRequest<AdminLogsResponse>(url);
   },
 };
 

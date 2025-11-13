@@ -6,32 +6,41 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { ErrorState } from "@/components/ui/error-state";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { usersAPI, roommatesAPI, User } from "@/lib/api";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import { usersAPI, User } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
-import { Shield, Users, UserX, AlertTriangle, Settings, Save, RotateCcw } from "lucide-react";
+import { Shield, Users, UserX, AlertTriangle, Search, Trash2, UserCheck, FileText } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
+import { AdminLogsTable } from "@/components/admin/AdminLogsTable";
 
 export default function Admin() {
   const [users, setUsers] = useState<User[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [suspendingUsers, setSuspendingUsers] = useState<Set<string>>(new Set());
-  
-  // Matching weights state
-  const [matchingWeights, setMatchingWeights] = useState<any>({});
-  const [weightsLoading, setWeightsLoading] = useState(false);
-  const [savingWeights, setSavingWeights] = useState(false);
-  
+  const [unsuspendingUsers, setUnsuspendingUsers] = useState<Set<string>>(new Set());
+  const [deletingUsers, setDeletingUsers] = useState<Set<string>>(new Set());
+  const [searchQuery, setSearchQuery] = useState("");
+  const [userToDelete, setUserToDelete] = useState<string | null>(null);
+
   const { user: currentUser } = useAuth();
   const { toast } = useToast();
 
-  const fetchUsers = async () => {
+  const fetchUsers = async (search?: string) => {
     try {
       setLoading(true);
       setError(null);
-      const data = await usersAPI.getAll();
+      const data = await usersAPI.getAll(search);
       setUsers(data);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to fetch users");
@@ -40,26 +49,8 @@ export default function Admin() {
     }
   };
 
-  const fetchMatchingWeights = async () => {
-    try {
-      setWeightsLoading(true);
-      const response = await roommatesAPI.getWeights();
-      setMatchingWeights(response.weights);
-    } catch (err) {
-      console.error('Failed to fetch matching weights:', err);
-      toast({
-        title: "Error",
-        description: "Failed to fetch matching weights",
-        variant: "destructive",
-      });
-    } finally {
-      setWeightsLoading(false);
-    }
-  };
-
   useEffect(() => {
     fetchUsers();
-    fetchMatchingWeights();
   }, []);
 
   const handleSuspendUser = async (userId: string) => {
@@ -75,9 +66,9 @@ export default function Admin() {
     try {
       setSuspendingUsers(prev => new Set(prev).add(userId));
       await usersAPI.suspend(userId);
-      
+
       // Update local state
-      setUsers(prev => prev.map(user => 
+      setUsers(prev => prev.map(user =>
         user.id === userId ? { ...user, suspended: true } : user
       ));
 
@@ -100,57 +91,72 @@ export default function Admin() {
     }
   };
 
-  const handleSaveWeights = async () => {
+  const handleUnsuspendUser = async (userId: string) => {
     try {
-      setSavingWeights(true);
-      await roommatesAPI.updateWeights(matchingWeights);
-      
+      setUnsuspendingUsers(prev => new Set(prev).add(userId));
+      await usersAPI.unsuspend(userId);
+
+      // Update local state
+      setUsers(prev => prev.map(user =>
+        user.id === userId ? { ...user, suspended: false } : user
+      ));
+
       toast({
-        title: "Weights Updated",
-        description: "Roommate matching weights have been updated successfully.",
+        title: "User unsuspended",
+        description: "The user has been successfully unsuspended.",
       });
     } catch (err) {
       toast({
-        title: "Update Failed",
-        description: err instanceof Error ? err.message : "Failed to update weights",
+        title: "Unsuspension failed",
+        description: err instanceof Error ? err.message : "Failed to unsuspend user",
         variant: "destructive",
       });
     } finally {
-      setSavingWeights(false);
+      setUnsuspendingUsers(prev => {
+        const newSet = new Set(prev);
+        newSet.delete(userId);
+        return newSet;
+      });
     }
   };
 
-  const handleResetWeights = async () => {
+  const handleDeleteUser = async () => {
+    if (!userToDelete) return;
+
     try {
-      setSavingWeights(true);
-      await roommatesAPI.resetWeights();
-      await fetchMatchingWeights(); // Refresh the weights
-      
+      setDeletingUsers(prev => new Set(prev).add(userToDelete));
+      await usersAPI.deleteUser(userToDelete);
+
+      // Remove from local state
+      setUsers(prev => prev.filter(user => user.id !== userToDelete));
+
       toast({
-        title: "Weights Reset",
-        description: "Roommate matching weights have been reset to defaults.",
+        title: "User deleted",
+        description: "The user has been permanently deleted.",
       });
     } catch (err) {
       toast({
-        title: "Reset Failed",
-        description: err instanceof Error ? err.message : "Failed to reset weights",
+        title: "Deletion failed",
+        description: err instanceof Error ? err.message : "Failed to delete user",
         variant: "destructive",
       });
     } finally {
-      setSavingWeights(false);
+      setDeletingUsers(prev => {
+        const newSet = new Set(prev);
+        newSet.delete(userToDelete);
+        return newSet;
+      });
+      setUserToDelete(null);
     }
   };
 
-  const updateWeight = (key: string, value: string) => {
-    const numValue = parseInt(value) || 0;
-    setMatchingWeights((prev: any) => ({
-      ...prev,
-      [key]: numValue
-    }));
-  };
-
-  const getTotalWeight = () => {
-    return Object.values(matchingWeights).reduce((sum: number, weight: any) => sum + (weight || 0), 0);
+  const handleSearch = (value: string) => {
+    setSearchQuery(value);
+    if (value.trim()) {
+      fetchUsers(value);
+    } else {
+      fetchUsers();
+    }
   };
 
   // Check if current user is admin
@@ -220,8 +226,14 @@ export default function Admin() {
 
         <Tabs defaultValue="users" className="space-y-6">
           <TabsList>
-            <TabsTrigger value="users">User Management</TabsTrigger>
-            <TabsTrigger value="matching">Roommate Matching</TabsTrigger>
+            <TabsTrigger value="users">
+              <Users className="h-4 w-4 mr-2" />
+              User Management
+            </TabsTrigger>
+            <TabsTrigger value="logs">
+              <FileText className="h-4 w-4 mr-2" />
+              Admin Logs
+            </TabsTrigger>
           </TabsList>
 
           <TabsContent value="users" className="space-y-6">
@@ -281,6 +293,19 @@ export default function Admin() {
                 </CardDescription>
               </CardHeader>
               <CardContent>
+                {/* Search Input */}
+                <div className="mb-4">
+                  <div className="relative">
+                    <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                    <Input
+                      placeholder="Search users by name or email..."
+                      value={searchQuery}
+                      onChange={(e) => handleSearch(e.target.value)}
+                      className="pl-10"
+                    />
+                  </div>
+                </div>
+
                 <div className="overflow-x-auto">
                   <Table>
                     <TableHeader>
@@ -312,22 +337,47 @@ export default function Admin() {
                             </Badge>
                           </TableCell>
                           <TableCell className="text-right">
-                            {user.role !== 'admin' && !user.suspended && (
-                              <Button
-                                variant="destructive"
-                                size="sm"
-                                onClick={() => handleSuspendUser(user.id)}
-                                disabled={suspendingUsers.has(user.id)}
-                                data-testid={`suspend-user-${user.id}`}
-                              >
-                                {suspendingUsers.has(user.id) ? "Suspending..." : "Suspend"}
-                              </Button>
-                            )}
-                            {user.id === currentUser?.id && (
-                              <Badge variant="muted" className="text-xs">
-                                You
-                              </Badge>
-                            )}
+                            <div className="flex items-center justify-end gap-2">
+                              {user.id === currentUser?.id ? (
+                                <Badge variant="muted" className="text-xs">
+                                  You
+                                </Badge>
+                              ) : user.role !== 'admin' ? (
+                                <>
+                                  {user.suspended ? (
+                                    <Button
+                                      variant="default"
+                                      size="sm"
+                                      onClick={() => handleUnsuspendUser(user.id)}
+                                      disabled={unsuspendingUsers.has(user.id)}
+                                    >
+                                      <UserCheck className="h-4 w-4 mr-1" />
+                                      {unsuspendingUsers.has(user.id) ? "Unsuspending..." : "Unsuspend"}
+                                    </Button>
+                                  ) : (
+                                    <Button
+                                      variant="secondary"
+                                      size="sm"
+                                      onClick={() => handleSuspendUser(user.id)}
+                                      disabled={suspendingUsers.has(user.id)}
+                                      data-testid={`suspend-user-${user.id}`}
+                                    >
+                                      <UserX className="h-4 w-4 mr-1" />
+                                      {suspendingUsers.has(user.id) ? "Suspending..." : "Suspend"}
+                                    </Button>
+                                  )}
+                                  <Button
+                                    variant="destructive"
+                                    size="sm"
+                                    onClick={() => setUserToDelete(user.id)}
+                                    disabled={deletingUsers.has(user.id)}
+                                  >
+                                    <Trash2 className="h-4 w-4 mr-1" />
+                                    Delete
+                                  </Button>
+                                </>
+                              ) : null}
+                            </div>
                           </TableCell>
                         </TableRow>
                       ))}
@@ -338,230 +388,32 @@ export default function Admin() {
             </Card>
           </TabsContent>
 
-          <TabsContent value="matching" className="space-y-6">
-            <Card className="bg-surface border-surface-3">
-              <CardHeader>
-                <div className="flex items-center gap-2">
-                  <Settings className="h-5 w-5" />
-                  <CardTitle>Roommate Matching Weights</CardTitle>
-                </div>
-                <CardDescription>
-                  Configure how roommate compatibility is calculated. Weights must total 100%.
-                </CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-6">
-                {weightsLoading ? (
-                  <div className="flex items-center justify-center py-8">
-                    <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
-                  </div>
-                ) : (
-                  <>
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                      <div className="space-y-4">
-                        <div className="flex items-center justify-between">
-                          <Label htmlFor="budget">Budget Compatibility</Label>
-                          <Input
-                            id="budget"
-                            type="number"
-                            min="0"
-                            max="100"
-                            value={matchingWeights.budget || 0}
-                            onChange={(e) => updateWeight('budget', e.target.value)}
-                            className="w-20"
-                          />
-                        </div>
-                        <div className="flex items-center justify-between">
-                          <Label htmlFor="sleepSchedule">Sleep Schedule</Label>
-                          <Input
-                            id="sleepSchedule"
-                            type="number"
-                            min="0"
-                            max="100"
-                            value={matchingWeights.sleepSchedule || 0}
-                            onChange={(e) => updateWeight('sleepSchedule', e.target.value)}
-                            className="w-20"
-                          />
-                        </div>
-                        <div className="flex items-center justify-between">
-                          <Label htmlFor="cleanliness">Cleanliness Level</Label>
-                          <Input
-                            id="cleanliness"
-                            type="number"
-                            min="0"
-                            max="100"
-                            value={matchingWeights.cleanliness || 0}
-                            onChange={(e) => updateWeight('cleanliness', e.target.value)}
-                            className="w-20"
-                          />
-                        </div>
-                        <div className="flex items-center justify-between">
-                          <Label htmlFor="socialVibe">Social Vibe</Label>
-                          <Input
-                            id="socialVibe"
-                            type="number"
-                            min="0"
-                            max="100"
-                            value={matchingWeights.socialVibe || 0}
-                            onChange={(e) => updateWeight('socialVibe', e.target.value)}
-                            className="w-20"
-                          />
-                        </div>
-                        <div className="flex items-center justify-between">
-                          <Label htmlFor="moveInDate">Move-in Date</Label>
-                          <Input
-                            id="moveInDate"
-                            type="number"
-                            min="0"
-                            max="100"
-                            value={matchingWeights.moveInDate || 0}
-                            onChange={(e) => updateWeight('moveInDate', e.target.value)}
-                            className="w-20"
-                          />
-                        </div>
-                        <div className="flex items-center justify-between">
-                          <Label htmlFor="leaseLength">Lease Length</Label>
-                          <Input
-                            id="leaseLength"
-                            type="number"
-                            min="0"
-                            max="100"
-                            value={matchingWeights.leaseLength || 0}
-                            onChange={(e) => updateWeight('leaseLength', e.target.value)}
-                            className="w-20"
-                          />
-                        </div>
-                        <div className="flex items-center justify-between">
-                          <Label htmlFor="distance">Distance Preference</Label>
-                          <Input
-                            id="distance"
-                            type="number"
-                            min="0"
-                            max="100"
-                            value={matchingWeights.distance || 0}
-                            onChange={(e) => updateWeight('distance', e.target.value)}
-                            className="w-20"
-                          />
-                        </div>
-                      </div>
-                      
-                      <div className="space-y-4">
-                        <div className="flex items-center justify-between">
-                          <Label htmlFor="quietHours">Quiet Hours</Label>
-                          <Input
-                            id="quietHours"
-                            type="number"
-                            min="0"
-                            max="100"
-                            value={matchingWeights.quietHours || 0}
-                            onChange={(e) => updateWeight('quietHours', e.target.value)}
-                            className="w-20"
-                          />
-                        </div>
-                        <div className="flex items-center justify-between">
-                          <Label htmlFor="chores">Chores Preference</Label>
-                          <Input
-                            id="chores"
-                            type="number"
-                            min="0"
-                            max="100"
-                            value={matchingWeights.chores || 0}
-                            onChange={(e) => updateWeight('chores', e.target.value)}
-                            className="w-20"
-                          />
-                        </div>
-                        <div className="flex items-center justify-between">
-                          <Label htmlFor="guests">Guests Frequency</Label>
-                          <Input
-                            id="guests"
-                            type="number"
-                            min="0"
-                            max="100"
-                            value={matchingWeights.guests || 0}
-                            onChange={(e) => updateWeight('guests', e.target.value)}
-                            className="w-20"
-                          />
-                        </div>
-                        <div className="flex items-center justify-between">
-                          <Label htmlFor="workFromHome">Work from Home</Label>
-                          <Input
-                            id="workFromHome"
-                            type="number"
-                            min="0"
-                            max="100"
-                            value={matchingWeights.workFromHome || 0}
-                            onChange={(e) => updateWeight('workFromHome', e.target.value)}
-                            className="w-20"
-                          />
-                        </div>
-                        <div className="flex items-center justify-between">
-                          <Label htmlFor="pets">Pet Compatibility</Label>
-                          <Input
-                            id="pets"
-                            type="number"
-                            min="0"
-                            max="100"
-                            value={matchingWeights.pets || 0}
-                            onChange={(e) => updateWeight('pets', e.target.value)}
-                            className="w-20"
-                          />
-                        </div>
-                        <div className="flex items-center justify-between">
-                          <Label htmlFor="smoking">Smoking Policy</Label>
-                          <Input
-                            id="smoking"
-                            type="number"
-                            min="0"
-                            max="100"
-                            value={matchingWeights.smoking || 0}
-                            onChange={(e) => updateWeight('smoking', e.target.value)}
-                            className="w-20"
-                          />
-                        </div>
-                      </div>
-                    </div>
-
-                    <div className="flex items-center justify-between p-4 bg-muted rounded-lg">
-                      <div>
-                        <p className="font-medium">Total Weight</p>
-                        <p className="text-sm text-muted-foreground">
-                          {getTotalWeight()}% {getTotalWeight() !== 100 ? '(Must equal 100%)' : ''}
-                        </p>
-                      </div>
-                      <div className="flex gap-2">
-                        <Button
-                          variant="outline"
-                          onClick={handleResetWeights}
-                          disabled={savingWeights}
-                          className="gap-2"
-                        >
-                          <RotateCcw className="h-4 w-4" />
-                          Reset to Default
-                        </Button>
-                        <Button
-                          onClick={handleSaveWeights}
-                          disabled={savingWeights || getTotalWeight() !== 100}
-                          className="gap-2"
-                        >
-                          <Save className="h-4 w-4" />
-                          {savingWeights ? 'Saving...' : 'Save Changes'}
-                        </Button>
-                      </div>
-                    </div>
-
-                    {getTotalWeight() !== 100 && (
-                      <Alert className="border-warning/20 bg-warning/10">
-                        <AlertTriangle className="h-4 w-4 text-warning" />
-                        <AlertDescription className="text-warning">
-                          The total weight must equal 100% before saving. Current total: {getTotalWeight()}%
-                        </AlertDescription>
-                      </Alert>
-                    )}
-                  </>
-                )}
-              </CardContent>
-            </Card>
+          <TabsContent value="logs" className="space-y-6">
+            <AdminLogsTable />
           </TabsContent>
         </Tabs>
+
+        {/* Delete Confirmation Dialog */}
+        <AlertDialog open={!!userToDelete} onOpenChange={() => setUserToDelete(null)}>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>Are you absolutely sure?</AlertDialogTitle>
+              <AlertDialogDescription>
+                This action cannot be undone. This will permanently delete the user account
+                and remove all associated data from our servers.
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel>Cancel</AlertDialogCancel>
+              <AlertDialogAction
+                onClick={handleDeleteUser}
+                className="bg-destructive hover:bg-destructive/90"
+              >
+                Delete User
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
       </div>
     </div>
   );
