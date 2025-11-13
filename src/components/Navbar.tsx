@@ -1,7 +1,7 @@
 import { Link, useNavigate, useLocation } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { useAuth } from "@/lib/auth";
-import { Home, LogOut, User, Shield, UserCircle, LayoutDashboard, Target, BarChart3, Settings, MessageCircle } from "lucide-react";
+import { Home, LogOut, User, Shield, UserCircle, LayoutDashboard, Target, BarChart3, Settings, MessageCircle, Plus, Users } from "lucide-react";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -88,6 +88,21 @@ export function Navbar() {
           >
             Properties
           </Link>
+          <Link
+            to="/vt-community"
+            className="text-foreground hover:text-accent transition-colors font-medium flex items-center gap-1"
+          >
+            <Users className="h-4 w-4" />
+            VT Community
+          </Link>
+          {isAuthenticated && (
+            <Link
+              to="/post-listing"
+              className="text-foreground hover:text-accent transition-colors font-medium"
+            >
+              Post Listing
+            </Link>
+          )}
           {isAuthenticated && (
             <>
         <Link
@@ -167,6 +182,14 @@ export function Navbar() {
                 <DropdownMenuItem onClick={() => navigate('/properties')}>
                   <Home className="h-4 w-4 mr-2" />
                   Properties
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => navigate('/vt-community')}>
+                  <Users className="h-4 w-4 mr-2" />
+                  VT Community
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => navigate('/post-listing')}>
+                  <Plus className="h-4 w-4 mr-2" />
+                  Post Listing
                 </DropdownMenuItem>
         <DropdownMenuItem onClick={() => navigate('/messages')}>
           <MessageCircle className="h-4 w-4 mr-2" />

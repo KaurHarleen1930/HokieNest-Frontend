@@ -6,6 +6,7 @@ import session from 'express-session';
 import passport from 'passport';
 import { authRoutes } from './routes/auth';
 import { listingRoutes } from './routes/listings';
+import roomListingsRoutes from './routes/room-listings';
 import { adminRoutes } from './routes/admin';
 import { preferencesRoutes } from './routes/preferences';
 import { roommatesRoutes } from './routes/roommates';
@@ -59,6 +60,7 @@ app.get('/health', (req, res) => {
 // Register ALL API routes
 app.use('/api/v1/auth', authRoutes);
 app.use('/api/v1/listings', listingRoutes);
+app.use('/api/v1/room-listings', roomListingsRoutes);
 app.use('/api/v1/admin', adminRoutes);
 app.use('/api/v1/preferences', preferencesRoutes);
 app.use('/api/v1/roommates', roommatesRoutes);

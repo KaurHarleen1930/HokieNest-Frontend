@@ -1,6 +1,6 @@
 import { Button } from "@/components/ui/button";
 import { useNavigate } from "react-router-dom";
-import { Search, Home as HomeIcon, Users, Shield } from "lucide-react";
+import { Search, Home as HomeIcon, Users, Shield, Plus } from "lucide-react";
 import { useAuth } from "@/lib/auth";
 
 export default function Home() {
@@ -140,6 +140,44 @@ export default function Home() {
           </div>
         </div>
       </section>
+
+      {/* Post Listing CTA Section */}
+      {isAuthenticated && (
+        <section className="py-20">
+          <div className="container mx-auto px-4">
+            <div className="max-w-3xl mx-auto text-center">
+              <div className="mb-6">
+                <span className="text-5xl">🏠</span>
+              </div>
+              <h2 className="text-3xl font-bold text-primary mb-4">
+                Have a property to share?
+              </h2>
+              <p className="text-muted text-lg mb-8 leading-relaxed">
+                List your property and help fellow Hokies find their perfect living space. 
+                Whether it's a whole apartment, private room, or shared space, we make it easy to reach the VT community.
+              </p>
+              <div className="flex flex-col sm:flex-row gap-4 justify-center">
+                <Button 
+                  size="lg" 
+                  variant="accent"
+                  onClick={() => navigate('/post-listing')}
+                  className="gap-2"
+                >
+                  <Plus className="h-5 w-5" />
+                  Post Your Listing
+                </Button>
+                <Button 
+                  size="lg" 
+                  variant="outline"
+                  onClick={() => navigate('/properties')}
+                >
+                  Browse Listings →
+                </Button>
+              </div>
+            </div>
+          </div>
+        </section>
+      )}
 
       {/* CTA Section */}
       <section className="py-20">

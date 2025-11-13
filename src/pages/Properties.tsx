@@ -26,8 +26,10 @@ import {
   Target,
   Train, // <-- ADDED
   MapPin, // <-- ADDED
+  Plus,
 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
+import { useAuth } from "@/lib/auth";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import PriceRange from "@/components/ui/PriceRange";
 import { supabase } from "@/lib/supabase";
@@ -115,6 +117,7 @@ async function fetchUnitsForProperties(ids: string[]) {
 
 export default function Properties() {
   const navigate = useNavigate();
+  const { user } = useAuth();
   const [allListings, setAllListings] = useState<Listing[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -570,6 +573,17 @@ export default function Properties() {
                 <Home className="h-4 w-4" />
                 Find Roommates
               </Button>
+              {user && (
+                <Button
+                  variant="accent"
+                  size="sm"
+                  onClick={() => navigate('/post-listing')}
+                  className="gap-2"
+                >
+                  <Plus className="h-4 w-4" />
+                  Post Listing
+                </Button>
+              )}
             </div>
             <p className="text-muted">
               {filtered.length} {filtered.length === 1 ? "property" : "properties"} total

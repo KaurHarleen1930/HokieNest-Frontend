@@ -5,9 +5,23 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Chip } from "@/components/ui/chip";
-import { ArrowLeft, MapPin, Bed, Bath, Globe, Mail, Phone, Home, Wifi, Car, Shield, Zap, Users } from "lucide-react";
+import { ArrowLeft, MapPin, Bed, Bath, Globe, Home, Wifi, Car, Shield, Zap, Users, MessageCircle, Trash2 } from "lucide-react";
 import { supabase } from "@/lib/supabase";
 import { ReviewsSection } from "@/components/ReviewsSection";
+import { useAuth } from "@/lib/auth";
+import { chatAPI, listingsAPI } from "@/lib/api";
+import { toast } from "sonner";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
 
 // --- ADD NEW IMPORTS ---
 import PropertyMapWithOverlays from "@/components/Map/PropertyMapWithOverlays";
@@ -53,11 +67,15 @@ interface Unit {
 export default function PropertyDetail() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
+  const { user, isAuthenticated } = useAuth();
   const [listing, setListing] = useState<any>(null);
   const [units, setUnits] = useState<Unit[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [selectedImageIndex, setSelectedImageIndex] = useState(0);
+  const [propertyOwnerId, setPropertyOwnerId] = useState<string | null>(null);
+  const [messagingOwner, setMessagingOwner] = useState(false);
+  const [deleting, setDeleting] = useState(false);
 
   // --- ADDED/MODIFIED STATE ---
   const [attractions, setAttractions] = useState<Attraction[]>([]);
@@ -111,6 +129,10 @@ export default function PropertyDetail() {
         const maxBeds = beds.length > 0 ? Math.max(...beds) : 0;
         const maxBaths = baths.length > 0 ? Math.max(...baths) : 0;
 
+        // Clean description by removing owner metadata for display
+        let displayDescription = property.description || '';
+        displayDescription = displayDescription.replace(/\[OWNER_ID:[^\]]+\]\n?/, '');
+
         setListing({
           id: property.id,
           title: property.name,
@@ -123,10 +145,8 @@ export default function PropertyDetail() {
           baths: maxBaths,
           imageUrl: property.thumbnail_url || (photosArray.length > 0 ? photosArray[0] : null),
           photos: photosArray,
-          description: property.description,
+          description: displayDescription,
           amenities: Array.isArray(amenitiesData) ? amenitiesData : Object.keys(amenitiesData),
-          contactEmail: property.email,
-          contactPhone: property.phone_number,
           intlFriendly: property.intl_friendly || false,
           latitude: property.latitude,
           longitude: property.longitude,
@@ -134,6 +154,18 @@ export default function PropertyDetail() {
           year_built: property.year_built,
           total_units: property.total_units
         });
+
+        // Store property owner ID for messaging
+        // Try to get from created_by column first, then parse from description
+        if (property.created_by) {
+          setPropertyOwnerId(property.created_by.toString());
+        } else if (property.description) {
+          // Parse owner ID from description metadata: [OWNER_ID:userId]
+          const ownerIdMatch = property.description.match(/\[OWNER_ID:([^\]]+)\]/);
+          if (ownerIdMatch && ownerIdMatch[1]) {
+            setPropertyOwnerId(ownerIdMatch[1]);
+          }
+        }
 
         setUnits(parsedUnits);
 
@@ -323,25 +355,93 @@ export default function PropertyDetail() {
             {/* Contact CTA */}
             <Card className="bg-surface border-surface-3">
               <CardHeader>
-                <CardTitle className="text-lg">Contact Property</CardTitle>
+                <CardTitle className="text-lg">Contact Property Owner</CardTitle>
               </CardHeader>
               <CardContent className="space-y-3">
-                {listing.contactEmail && (
-                  <Button variant="accent" className="w-full gap-2" asChild>
-                    <a href={`mailto:${listing.contactEmail}`}>
-                      <Mail className="h-4 w-4" />
-                      Email Property
-                    </a>
+                {isAuthenticated && propertyOwnerId && user?.id !== propertyOwnerId ? (
+                  <Button 
+                    variant="accent" 
+                    className="w-full gap-2"
+                    onClick={async () => {
+                      if (!propertyOwnerId || !listing.id) return;
+                      setMessagingOwner(true);
+                      try {
+                        const result = await chatAPI.createPropertyInquiry(
+                          propertyOwnerId,
+                          listing.id,
+                          listing.title
+                        );
+                        toast.success("Conversation started!");
+                        navigate(`/conversation/${result.conversation.id}`);
+                      } catch (error: any) {
+                        toast.error(error.message || "Failed to start conversation");
+                      } finally {
+                        setMessagingOwner(false);
+                      }
+                    }}
+                    disabled={messagingOwner}
+                  >
+                    <MessageCircle className="h-4 w-4" />
+                    {messagingOwner ? "Starting conversation..." : "Message Owner"}
                   </Button>
-                )}
-                {listing.contactPhone && (
-                  <Button variant="outline" className="w-full gap-2" asChild>
-                    <a href={`tel:${listing.contactPhone}`}>
-                      <Phone className="h-4 w-4" />
-                      {listing.contactPhone}
-                    </a>
+                ) : !isAuthenticated ? (
+                  <Button 
+                    variant="accent" 
+                    className="w-full gap-2"
+                    onClick={() => navigate('/login')}
+                  >
+                    <MessageCircle className="h-4 w-4" />
+                    Sign In to Message
                   </Button>
-                )}
+                ) : isAuthenticated && propertyOwnerId && user?.id === propertyOwnerId ? (
+                  <div className="space-y-3">
+                    <p className="text-sm text-muted-foreground text-center">
+                      This is your listing
+                    </p>
+                    <AlertDialog>
+                      <AlertDialogTrigger asChild>
+                        <Button 
+                          variant="destructive" 
+                          className="w-full gap-2"
+                          disabled={deleting}
+                        >
+                          <Trash2 className="h-4 w-4" />
+                          {deleting ? "Deleting..." : "Delete Listing"}
+                        </Button>
+                      </AlertDialogTrigger>
+                      <AlertDialogContent>
+                        <AlertDialogHeader>
+                          <AlertDialogTitle>Delete Listing?</AlertDialogTitle>
+                          <AlertDialogDescription>
+                            Are you sure you want to delete this listing? This action cannot be undone.
+                            The listing and all associated units will be permanently removed.
+                          </AlertDialogDescription>
+                        </AlertDialogHeader>
+                        <AlertDialogFooter>
+                          <AlertDialogCancel>Cancel</AlertDialogCancel>
+                          <AlertDialogAction
+                            onClick={async () => {
+                              if (!listing.id) return;
+                              setDeleting(true);
+                              try {
+                                await listingsAPI.delete(listing.id);
+                                toast.success("Listing deleted successfully");
+                                navigate("/vt-community");
+                              } catch (error: any) {
+                                toast.error(error.message || "Failed to delete listing");
+                              } finally {
+                                setDeleting(false);
+                              }
+                            }}
+                            className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                          >
+                            Delete
+                          </AlertDialogAction>
+                        </AlertDialogFooter>
+                      </AlertDialogContent>
+                    </AlertDialog>
+                  </div>
+                ) : null}
                 {listing.website_url && (
                   <Button variant="outline" className="w-full gap-2" asChild>
                     <a href={listing.website_url} target="_blank" rel="noopener noreferrer">
@@ -350,11 +450,9 @@ export default function PropertyDetail() {
                     </a>
                   </Button>
                 )}
-                {!listing.contactEmail && !listing.contactPhone && !listing.website_url && (
-                  <Button variant="accent" className="w-full">
-                    Contact Landlord
-                  </Button>
-                )}
+                <p className="text-xs text-muted-foreground text-center mt-2">
+                  All communication is secure and private through our messaging system
+                </p>
               </CardContent>
             </Card>
           </div>
@@ -456,19 +554,44 @@ export default function PropertyDetail() {
                                 {unit.rent_max > unit.rent_min && ` - ${unit.rent_max.toLocaleString()}`}
                               </p>
                               <p className="text-xs text-muted">/month</p>
-                              <Button 
-                                variant="outline" 
-                                size="sm" 
-                                className="mt-2"
-                                onClick={() => {
-                                  // Handle contact for specific unit
-                                  if (listing.contactEmail) {
-                                    window.location.href = `mailto:${listing.contactEmail}?subject=Inquiry about Unit ${unit.unit_number}`;
-                                  }
-                                }}
-                              >
-                                Inquire
-                              </Button>
+                              {isAuthenticated && propertyOwnerId && user?.id !== propertyOwnerId ? (
+                                <Button 
+                                  variant="accent" 
+                                  size="sm" 
+                                  className="mt-2 gap-2"
+                                  onClick={async () => {
+                                    if (!propertyOwnerId || !listing.id) return;
+                                    setMessagingOwner(true);
+                                    try {
+                                      const result = await chatAPI.createPropertyInquiry(
+                                        propertyOwnerId,
+                                        listing.id,
+                                        `${listing.title} - Unit ${unit.unit_number || 'Inquiry'}`
+                                      );
+                                      toast.success("Conversation started!");
+                                      navigate(`/conversation/${result.conversation.id}`);
+                                    } catch (error: any) {
+                                      toast.error(error.message || "Failed to start conversation");
+                                    } finally {
+                                      setMessagingOwner(false);
+                                    }
+                                  }}
+                                  disabled={messagingOwner}
+                                >
+                                  <MessageCircle className="h-3 w-3" />
+                                  {messagingOwner ? "Starting..." : "Inquire"}
+                                </Button>
+                              ) : !isAuthenticated ? (
+                                <Button 
+                                  variant="accent" 
+                                  size="sm" 
+                                  className="mt-2 gap-2"
+                                  onClick={() => navigate('/login')}
+                                >
+                                  <MessageCircle className="h-3 w-3" />
+                                  Sign In
+                                </Button>
+                              ) : null}
                             </div>
                           </div>
                         </CardContent>

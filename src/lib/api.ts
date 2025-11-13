@@ -282,7 +282,10 @@ async function apiRequest<T>(
       console.error('❌ API Error:', response.status, errorData);
       // CHANGE: Backend sends { error: "message" } so we need to access errorData.error
       const errorMessage = errorData.error || errorData.message || 'Request failed';
-      throw new APIError(response.status, errorMessage);
+      const error = new APIError(response.status, errorMessage);
+      // Attach full error data for better error handling
+      (error as any).response = { status: response.status, data: errorData };
+      throw error;
     }
 
     const data = await response.json();
@@ -313,6 +316,189 @@ export const listingsAPI = {
 
   getById: async (id: string): Promise<Listing> => {
     return apiRequest<Listing>(`/listings/${id}`);
+  },
+
+  create: async (listingData: {
+    name: string;
+    address: string;
+    city: string;
+    state: string;
+    zip_code?: string;
+    description?: string;
+    latitude?: number;
+    longitude?: number;
+    website_url?: string;
+    intl_friendly?: boolean;
+    photos?: string[];
+    amenities?: string[];
+    thumbnail_url?: string;
+    year_built?: number;
+    total_units?: number;
+    listing_type?: 'whole_apartment' | 'private_room' | 'shared_room';
+    pet_friendly?: boolean;
+    utilities_included?: boolean;
+    lease_term_months?: number;
+    move_in_date?: string;
+    parking_available?: boolean;
+    furnished?: boolean;
+    security_deposit?: number;
+    application_fee?: number;
+    units: Array<{
+      beds: number;
+      baths: number;
+      rent_min?: number;
+      rent_max?: number;
+      availability_status?: string;
+      square_feet?: number;
+      unit_number?: string;
+    }>;
+  }): Promise<{ message: string; listing: Listing }> => {
+    return apiRequest<{ message: string; listing: Listing }>('/listings', {
+      method: 'POST',
+      body: JSON.stringify(listingData),
+    });
+  },
+
+  uploadPhoto: async (file: File): Promise<{ url: string; success: boolean }> => {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onloadend = async () => {
+        try {
+          const base64Data = (reader.result as string).split(',')[1];
+          const result = await apiRequest<{ url: string; success: boolean; message?: string }>('/listings/upload-photo', {
+            method: 'POST',
+            body: JSON.stringify({
+              fileData: base64Data,
+              fileName: file.name,
+              fileType: file.type,
+            }),
+          });
+          resolve({ url: result.url, success: result.success });
+        } catch (error) {
+          reject(error);
+        }
+      };
+      reader.onerror = reject;
+      reader.readAsDataURL(file);
+    });
+  },
+
+  delete: async (id: string): Promise<{ message: string }> => {
+    return apiRequest<{ message: string }>(`/listings/${id}`, {
+      method: 'DELETE',
+    });
+  },
+
+  update: async (id: string, listingData: {
+    name: string;
+    address: string;
+    city: string;
+    state: string;
+    zip_code?: string;
+    description?: string;
+    latitude?: number;
+    longitude?: number;
+    website_url?: string;
+    intl_friendly?: boolean;
+    photos?: string[];
+    amenities?: string[];
+    thumbnail_url?: string;
+    year_built?: number;
+    total_units?: number;
+    listing_type?: 'whole_apartment' | 'private_room' | 'shared_room';
+    pet_friendly?: boolean;
+    utilities_included?: boolean;
+    lease_term_months?: number;
+    move_in_date?: string;
+    parking_available?: boolean;
+    furnished?: boolean;
+    security_deposit?: number;
+    application_fee?: number;
+    units: Array<{
+      beds: number;
+      baths: number;
+      rent_min?: number;
+      rent_max?: number;
+      availability_status?: string;
+      square_feet?: number;
+      unit_number?: string;
+    }>;
+  }): Promise<{ message: string; listing: Listing }> => {
+    return apiRequest<{ message: string; listing: Listing }>(`/listings/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(listingData),
+    });
+  },
+};
+
+// Room Listings API
+export const roomListingsAPI = {
+  // Get all room listings
+  getAll: async (filters?: {
+    listing_type?: 'private_room' | 'shared_room' | 'whole_unit';
+    city?: string;
+    state?: string;
+    minRent?: number;
+    maxRent?: number;
+    beds?: number;
+    pet_friendly?: boolean;
+  }): Promise<any[]> => {
+    const params = new URLSearchParams();
+    if (filters?.listing_type) params.append('listing_type', filters.listing_type);
+    if (filters?.city) params.append('city', filters.city);
+    if (filters?.state) params.append('state', filters.state);
+    if (filters?.minRent) params.append('minRent', filters.minRent.toString());
+    if (filters?.maxRent) params.append('maxRent', filters.maxRent.toString());
+    if (filters?.beds) params.append('beds', filters.beds.toString());
+    if (filters?.pet_friendly) params.append('pet_friendly', 'true');
+
+    const queryString = params.toString();
+    const endpoint = `/room-listings${queryString ? `?${queryString}` : ''}`;
+    return apiRequest<any[]>(endpoint);
+  },
+
+  // Get room listing by ID
+  getById: async (id: string): Promise<any> => {
+    return apiRequest<any>(`/room-listings/${id}`);
+  },
+
+  // Create a room listing
+  create: async (listingData: {
+    listing_type: 'private_room' | 'shared_room' | 'whole_unit';
+    title: string;
+    description?: string;
+    address: string;
+    city: string;
+    state: string;
+    zip_code?: string;
+    latitude?: number;
+    longitude?: number;
+    property_id?: string | null;
+    beds: number;
+    baths: number;
+    square_feet?: number;
+    rent_amount: number;
+    security_deposit?: number;
+    application_fee?: number;
+    availability_status?: string;
+    move_in_date?: string;
+    lease_term_months?: number;
+    furnished?: boolean;
+    pet_friendly?: boolean;
+    utilities_included?: boolean;
+    parking_available?: boolean;
+    intl_friendly?: boolean;
+    photos?: string[];
+    amenities?: string[];
+    house_rules?: string;
+    preferred_gender?: 'male' | 'female' | 'any';
+    preferred_age_range?: string;
+    website_url?: string;
+  }): Promise<{ message: string; listing: any }> => {
+    return apiRequest<{ message: string; listing: any }>('/room-listings', {
+      method: 'POST',
+      body: JSON.stringify(listingData),
+    });
   },
 };
 
@@ -758,6 +944,18 @@ export const chatAPI = {
   markConversationAsRead: async (conversationId: string): Promise<{ success: boolean; message: string }> => {
     return apiRequest<{ success: boolean; message: string }>(`/chat/conversations/${conversationId}/read`, {
       method: 'POST',
+    });
+  },
+
+  // Create conversation for property inquiry
+  createPropertyInquiry: async (propertyOwnerId: string, propertyId: string, propertyName: string): Promise<{ success: boolean; conversation: any }> => {
+    return apiRequest<{ success: boolean; conversation: any }>('/chat/property-inquiry', {
+      method: 'POST',
+      body: JSON.stringify({
+        property_owner_id: propertyOwnerId,
+        property_id: propertyId,
+        property_name: propertyName,
+      }),
     });
   },
 

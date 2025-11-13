@@ -12,12 +12,14 @@ import { Strategy as GoogleStrategy } from 'passport-google-oauth20';
 
 const router = Router();
 
-// Configure Google OAuth Strategy
-passport.use(new GoogleStrategy({
-  clientID: process.env.GOOGLE_CLIENT_ID!,
-  clientSecret: process.env.GOOGLE_CLIENT_SECRET!,
-  callbackURL: process.env.GOOGLE_REDIRECT_URI!
-}, async (accessToken, refreshToken, profile, done) => {
+// Configure Google OAuth Strategy (only if credentials are provided)
+if (process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET && process.env.GOOGLE_REDIRECT_URI) {
+  try {
+    passport.use(new GoogleStrategy({
+      clientID: process.env.GOOGLE_CLIENT_ID,
+      clientSecret: process.env.GOOGLE_CLIENT_SECRET,
+      callbackURL: process.env.GOOGLE_REDIRECT_URI
+    }, async (accessToken, refreshToken, profile, done) => {
   try {
     console.log('Google OAuth strategy - profile:', profile);
     // Check if email ends with @vt.edu
@@ -92,7 +94,15 @@ passport.use(new GoogleStrategy({
   } catch (error) {
     return done(error, undefined);
   }
-}));
+  }));
+  } catch (error) {
+    console.error('⚠️  Failed to configure Google OAuth Strategy:', error);
+    console.warn('Google OAuth will be disabled. Please check your GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, and GOOGLE_REDIRECT_URI environment variables.');
+  }
+} else {
+  console.warn('⚠️  Google OAuth credentials not found. Google OAuth will be disabled.');
+  console.warn('To enable Google OAuth, set GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, and GOOGLE_REDIRECT_URI in your .env file');
+}
 
 // Serialize user for session
 passport.serializeUser((user: any, done) => {
@@ -166,9 +176,15 @@ router.post('/signup', async (req, res, next) => {
       .single();
 
     if (!existingOAuthUser) {
-      return res.status(400).json({
-        message: 'Please verify your VT.edu email with Google first using "Continue with Google"'
-      });
+      // Check if Google OAuth is configured
+      if (process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET) {
+        return res.status(400).json({
+          message: 'Please verify your VT.edu email with Google first using "Continue with Google"'
+        });
+      } else {
+        // OAuth not configured, allow direct signup without OAuth verification
+        console.log('Google OAuth not configured, allowing direct signup');
+      }
     }
 
     if (existingOAuthUser.password_hash) {
@@ -383,15 +399,16 @@ router.get('/me', authenticateToken as any, async (req: any, res: Response) => {
   res.json(req.user);
 });
 
-// Google OAuth routes
-router.get('/google', passport.authenticate('google', {
-  scope: ['profile', 'email'],
-  prompt: 'select_account' // Force account selection
-}));
+// Google OAuth routes (only if configured)
+if (process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET && process.env.GOOGLE_REDIRECT_URI) {
+  router.get('/google', passport.authenticate('google', {
+    scope: ['profile', 'email'],
+    prompt: 'select_account' // Force account selection
+  }));
 
-router.get('/google/callback',
-  passport.authenticate('google', { session: false, failureRedirect: '/api/v1/auth/google/error' }),
-  async (req: any, res) => {
+  router.get('/google/callback',
+    passport.authenticate('google', { session: false, failureRedirect: '/api/v1/auth/google/error' }),
+    async (req: any, res) => {
     try {
       console.log('Google OAuth callback - req.user:', req.user);
       const user = req.user;
@@ -444,12 +461,44 @@ router.get('/google/callback',
   }
 );
 
-// Google OAuth error handler
-router.get('/google/error', (req, res) => {
-  const rawFrontendUrl = process.env.FRONTEND_URL || 'http://localhost:5174';
-  const frontendUrl = rawFrontendUrl.replace(/\/$/, '');
-  res.redirect(`${frontendUrl}/login?error=vt_email_required`);
-});
+  // Google OAuth error handler
+  router.get('/google/error', (req: Request, res: Response) => {
+    const error = req.query.error as string;
+    const errorDescription = req.query.error_description as string;
+    
+    console.error('Google OAuth error:', error, errorDescription);
+    
+    const rawFrontendUrl = process.env.FRONTEND_URL || 'http://localhost:5174';
+    const frontendUrl = rawFrontendUrl.replace(/\/$/, '');
+    
+    // Handle specific error cases
+    if (error === 'deleted_client' || errorDescription?.includes('deleted_client')) {
+      return res.redirect(`${frontendUrl}/login?error=oauth_client_deleted&message=${encodeURIComponent('Google OAuth client has been deleted or is invalid. Please use email/password login.')}`);
+    }
+    
+    // Default error redirect
+    res.redirect(`${frontendUrl}/login?error=oauth_failed&message=${encodeURIComponent(errorDescription || 'Google OAuth authentication failed. Please try again or use email/password login.')}`);
+  });
+} else {
+  // OAuth not configured - return error for OAuth routes
+  router.get('/google', (req: Request, res: Response) => {
+    const rawFrontendUrl = process.env.FRONTEND_URL || 'http://localhost:5174';
+    const frontendUrl = rawFrontendUrl.replace(/\/$/, '');
+    res.redirect(`${frontendUrl}/login?error=oauth_not_configured&message=${encodeURIComponent('Google OAuth is not configured. Please use email/password login.')}`);
+  });
+
+  router.get('/google/callback', (req: Request, res: Response) => {
+    const rawFrontendUrl = process.env.FRONTEND_URL || 'http://localhost:5174';
+    const frontendUrl = rawFrontendUrl.replace(/\/$/, '');
+    res.redirect(`${frontendUrl}/login?error=oauth_not_configured&message=${encodeURIComponent('Google OAuth is not configured. Please use email/password login.')}`);
+  });
+
+  router.get('/google/error', (req: Request, res: Response) => {
+    const rawFrontendUrl = process.env.FRONTEND_URL || 'http://localhost:5174';
+    const frontendUrl = rawFrontendUrl.replace(/\/$/, '');
+    res.redirect(`${frontendUrl}/login?error=oauth_not_configured&message=${encodeURIComponent('Google OAuth is not configured. Please use email/password login.')}`);
+  });
+}
 
 // Logout route (with optional auth for better UX)
 router.post('/logout', (req: Request, res: Response): void => {
