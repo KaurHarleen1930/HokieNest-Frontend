@@ -1,7 +1,7 @@
 import { Router, Request, Response } from "express";
 
 import { authenticateToken } from "../middleware/auth";
-import { supabase, supabaseAdmin } from '../lib/supabase';
+import { supabase } from '../lib/supabase';
 
 const router = Router();
 
@@ -146,33 +146,12 @@ router.post(
         });
       }
 
-      // ✅ Get Supabase Auth UUID for that email (v2-compatible)
-const { data: userList, error: listErr } = await supabaseAdmin.auth.admin.listUsers();
-
-if (listErr) {
-  console.error("Supabase admin.listUsers failed:", listErr);
-  return res.status(500).json({ message: "Failed to fetch Supabase users" });
-}
-
-// Find user by email (case-insensitive)
-const authUser = userList?.users?.find(
-  (u: any) => u.email?.toLowerCase() === appUser.email.toLowerCase()
-);
-
-if (!authUser) {
-  console.error("Supabase admin.listUsers → no match for:", appUser.email);
-  return res.status(403).json({ message: "Auth user not found for this email" });
-}
-
-// ✅ Valid Supabase Auth UUID (string)
-const supabaseUuid = authUser.id;
-
-      // Insert the post with UUID author_id
+      // Insert the post using backend user_id directly
       const { data: inserted, error } = await supabase
         .from("property_community_posts")
         .insert({
           property_id: propertyId,
-          user_id: supabaseUuid, // ✅ now a valid UUID
+          user_id: userId, // Use backend integer user_id
           content,
         })
         .select()

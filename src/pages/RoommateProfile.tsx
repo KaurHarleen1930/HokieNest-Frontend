@@ -127,7 +127,7 @@ export default function RoommateProfile() {
       
       toast({
         title: "Profile Updated",
-        description: "Your roommate preferences have been saved locally. Backend integration coming soon!",
+        description: "Your roommate preferences have been saved locally.",
       });
 
       // Try to save to backend if authenticated (optional)

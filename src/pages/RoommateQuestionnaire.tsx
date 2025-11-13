@@ -132,7 +132,7 @@ export default function RoommateQuestionnaire() {
       
       toast({
         title: "Profile Complete!",
-        description: "Your roommate preferences have been saved locally. Backend integration coming soon!",
+        description: "Your roommate preferences have been saved locally.",
       });
 
       navigate("/roommate-profile");

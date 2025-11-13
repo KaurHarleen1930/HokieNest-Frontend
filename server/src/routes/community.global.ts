@@ -1,5 +1,5 @@
 import { Router, Request, Response } from "express";
-import { supabase, supabaseAdmin } from "../lib/supabase";
+import { supabase } from "../lib/supabase";
 import { authenticateToken } from "../middleware/auth";
 
 const router = Router();
@@ -57,7 +57,7 @@ router.post("/", authenticateToken as any, async (req: any, res: Response) => {
     }
 
     // 3️⃣ Insert post using backend user_id directly
-    const { data, error } = await supabaseAdmin
+    const { data, error } = await supabase
       .from("community_posts")
       .insert([{ title, content, author_id: appUserId }])
       .select()
@@ -97,7 +97,7 @@ router.put("/:id", authenticateToken as any, async (req: any, res: Response) => 
       return res.status(403).json({ message: "Not your post" });
 
     // Update the post
-    const { data, error } = await supabaseAdmin
+    const { data, error } = await supabase
       .from("community_posts")
       .update({ title, content, updated_at: new Date().toISOString() })
       .eq("id", id)
@@ -137,7 +137,7 @@ router.delete("/:id", authenticateToken as any, async (req: any, res: Response) 
       return res.status(403).json({ message: "Not your post" });
 
     // Delete the post
-    const { error } = await supabaseAdmin
+    const { error } = await supabase
       .from("community_posts")
       .delete()
       .eq("id", id);
@@ -164,7 +164,7 @@ router.post("/:id/flag", authenticateToken as any, async (req: any, res: Respons
     if (!appUserId) return res.status(401).json({ message: "User not authenticated" });
 
     // Insert flag using backend user_id directly
-    const { data, error } = await supabaseAdmin
+    const { data, error } = await supabase
       .from("post_flags")
       .insert([{ post_id: id, user_id: appUserId, reason }])
       .select()
