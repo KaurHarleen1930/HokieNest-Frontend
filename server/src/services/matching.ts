@@ -92,7 +92,7 @@ export class RoommateMatchingService {
       // Get current user's preferences
       const currentUser = await this.getUserProfile(userId);
       if (!currentUser) {
-        console.error(`User profile not found for user ${userId}`);
+        console.error(`User profile not found for user ${userId} - missing housing or lifestyle preferences`);
         throw new Error('User profile not found');
       }
 
@@ -152,6 +152,7 @@ export class RoommateMatchingService {
         .single();
 
       if (userError || !user) {
+        console.log(`User ${userId} not found in users table:`, userError?.message);
         return null;
       }
 
@@ -170,6 +171,7 @@ export class RoommateMatchingService {
         .single();
 
       if (!housing || !lifestyle) {
+        console.log(`User ${userId} missing preferences - housing: ${!!housing}, lifestyle: ${!!lifestyle}`);
         return null;
       }
 
