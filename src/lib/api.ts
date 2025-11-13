@@ -1113,3 +1113,72 @@ export const statusAPI = {
     return apiRequest<{ success: boolean; status: any }>('/status/me');
   },
 };
+
+
+// Community Posts API (Backend-managed)
+// =========================
+
+export interface CommunityPost {
+  id: string;
+  author_id: string;
+  title: string;
+  content: string;
+  created_at: string;
+  updated_at?: string;
+}
+
+export interface PostFlag {
+  id: string;
+  post_id: string;
+  user_id: string;
+  reason: string;
+  created_at: string;
+  resolved: boolean;
+}
+
+export const communityAPI = {
+  async getAll(): Promise<CommunityPost[]> {
+    return apiRequest<CommunityPost[]>('/community', { method: 'GET' });
+  },
+
+  async getById(id: string): Promise<CommunityPost> {
+    return apiRequest<CommunityPost>(`/community/${id}`, { method: 'GET' });
+  },
+
+  async create(post: { title: string; content: string }): Promise<CommunityPost> {
+    return apiRequest<CommunityPost>('/community', {
+      method: 'POST',
+      body: JSON.stringify(post),
+    });
+  },
+
+  async update(id: string, post: { title?: string; content?: string }): Promise<CommunityPost> {
+    return apiRequest<CommunityPost>(`/community/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(post),
+    });
+  },
+
+  async remove(id: string): Promise<{ success: boolean }> {
+    return apiRequest<{ success: boolean }>(`/community/${id}`, {
+      method: 'DELETE',
+    });
+  },
+
+  async flag(postId: string, reason: string): Promise<PostFlag> {
+    return apiRequest<PostFlag>(`/community/${postId}/flag`, {
+      method: 'POST',
+      body: JSON.stringify({ reason }),
+    });
+  },
+
+  async getFlags(): Promise<PostFlag[]> {
+    return apiRequest<PostFlag[]>('/community/flags', { method: 'GET' });
+  },
+
+  async resolveFlag(flagId: string): Promise<{ success: boolean }> {
+    return apiRequest<{ success: boolean }>(`/community/flags/${flagId}/resolve`, {
+      method: 'PUT',
+    });
+  },
+};

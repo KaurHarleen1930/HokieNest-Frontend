@@ -143,6 +143,12 @@ export function Navbar() {
               >
                 Dashboard
               </Link>
+              <Link
+              to="/community"
+              className="text-foreground hover:text-accent transition-colors font-medium"
+            >
+              Community
+             </Link>
             </>
           )}
         </div>
