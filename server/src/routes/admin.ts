@@ -81,4 +81,47 @@ router.post('/users/:id/suspend', async (req: AuthRequest, res, next) => {
   }
 });
 
+// Delete any listing (admin only)
+router.delete('/listings/:id', async (req: AuthRequest, res, next) => {
+  try {
+    const { id } = req.params;
+
+    if (!id) {
+      return res.status(400).json({ message: 'Listing ID is required' });
+    }
+
+    console.log('🗑️ Admin DELETE request received:', { id, adminId: req.user?.id });
+
+    // Delete associated units first
+    try {
+      const { error: unitsError } = await supabase
+        .from('apartment_units')
+        .delete()
+        .eq('property_id', id);
+      
+      if (unitsError && !unitsError.message.includes('does not exist')) {
+        console.warn('Error deleting units (non-critical):', unitsError);
+      }
+    } catch (unitsDeleteError) {
+      console.warn('Error deleting units (non-critical):', unitsDeleteError);
+    }
+
+    // Delete the property
+    const { error: deleteError } = await supabase
+      .from('apartment_properties_listings')
+      .delete()
+      .eq('id', id);
+
+    if (deleteError) {
+      console.error('Error deleting listing:', deleteError);
+      return res.status(500).json({ message: 'Failed to delete listing', error: deleteError.message });
+    }
+
+    res.json({ message: 'Listing deleted successfully' });
+  } catch (error) {
+    console.error('Error in admin DELETE /listings/:id:', error);
+    next(error);
+  }
+});
+
 export { router as adminRoutes };
