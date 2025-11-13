@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -46,11 +46,39 @@ interface Unit {
 export default function PostListing() {
   const { user } = useAuth();
   const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState("");
   const [duplicateListingId, setDuplicateListingId] = useState<string | null>(null);
   const [isDuplicateOwner, setIsDuplicateOwner] = useState(false);
-  const [activeTab, setActiveTab] = useState<'post' | 'my-listings'>('post');
+  
+  // Get initial tab from URL params, default to 'post'
+  const tabFromUrl = searchParams.get('tab') as 'post' | 'my-listings' | null;
+  const [activeTab, setActiveTab] = useState<'post' | 'my-listings'>(tabFromUrl === 'my-listings' ? 'my-listings' : 'post');
+  
+  // Sync tab with URL when URL changes (e.g., from navigation)
+  useEffect(() => {
+    const urlTab = searchParams.get('tab');
+    if (urlTab === 'my-listings' && activeTab !== 'my-listings') {
+      setActiveTab('my-listings');
+    } else if (urlTab !== 'my-listings' && activeTab === 'my-listings') {
+      setActiveTab('post');
+    }
+  }, [searchParams]);
+  
+  // Update URL when tab changes locally
+  useEffect(() => {
+    const currentTab = searchParams.get('tab');
+    if (activeTab === 'my-listings' && currentTab !== 'my-listings') {
+      const newParams = new URLSearchParams(searchParams);
+      newParams.set('tab', 'my-listings');
+      setSearchParams(newParams, { replace: true });
+    } else if (activeTab === 'post' && currentTab === 'my-listings') {
+      const newParams = new URLSearchParams(searchParams);
+      newParams.delete('tab');
+      setSearchParams(newParams, { replace: true });
+    }
+  }, [activeTab]);
   const [myListings, setMyListings] = useState<any[]>([]);
   const [loadingMyListings, setLoadingMyListings] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
@@ -644,7 +672,7 @@ export default function PostListing() {
               <div className="inline-flex items-center gap-3 bg-card border border-border rounded-full px-6 py-3 mb-6">
                 <Home className="h-5 w-5 text-accent" />
                 <span className="text-sm font-semibold text-primary">
-                  {editingListingId ? 'Edit Your Property' : 'Post Your Property'}
+                  {editingListingId ? 'Edit Your Listing' : 'Post New Listing'}
                 </span>
               </div>
             </div>
@@ -755,7 +783,7 @@ export default function PostListing() {
                       className="gap-2"
                     >
                       <Plus className="h-4 w-4" />
-                      Post Your First Listing
+                      Post New Listing
                     </Button>
                   </div>
                 ) : (
@@ -1587,7 +1615,7 @@ export default function PostListing() {
                 {isLoading ? (
                   <>
                     <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                    {editingListingId ? 'Updating...' : 'Creating...'}
+                    {editingListingId ? 'Updating...' : 'Posting...'}
                   </>
                 ) : (
                   <>
@@ -1598,8 +1626,8 @@ export default function PostListing() {
                       </>
                     ) : (
                       <>
-                        <Home className="mr-2 h-4 w-4" />
-                        Create Listing
+                        <Plus className="mr-2 h-4 w-4" />
+                        Post New Listing
                       </>
                     )}
                   </>

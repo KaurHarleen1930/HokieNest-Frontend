@@ -89,13 +89,13 @@ export default function VTCommunity() {
             <div className="flex items-center justify-center gap-3 mb-4">
               <Home className="h-10 w-10 text-accent" />
               <h1 className="text-4xl md:text-5xl font-bold text-foreground">
-                VT Community
+                VT Listings
               </h1>
             </div>
             <p className="text-lg text-muted-foreground mb-6">
-              Browse properties posted by Virginia Tech students and community members.
+              Browse properties posted by Virginia Tech students.
               <br />
-              <span className="text-sm">Only listings posted by VT students are shown here.</span>
+              <span className="text-sm">All listings shown here are posted by VT students.</span>
             </p>
             {isAuthenticated && (
               <Button
@@ -105,7 +105,7 @@ export default function VTCommunity() {
                 onClick={() => navigate("/post-listing")}
               >
                 <Plus className="h-5 w-5" />
-                Post Your Listing
+                Post New Listing
               </Button>
             )}
           </div>
@@ -142,7 +142,7 @@ export default function VTCommunity() {
             <CardContent className="text-center py-8">
               <MapPin className="h-16 w-16 text-muted-foreground mx-auto mb-4" />
               <p className="text-muted-foreground mb-6">
-                Be the first to post a listing in the VT Community!
+                Be the first to post a listing!
               </p>
               {isAuthenticated && (
                 <Button
@@ -150,7 +150,7 @@ export default function VTCommunity() {
                   onClick={() => navigate("/post-listing")}
                 >
                   <Plus className="h-4 w-4 mr-2" />
-                  Post Your First Listing
+                  Post New Listing
                 </Button>
               )}
             </CardContent>
