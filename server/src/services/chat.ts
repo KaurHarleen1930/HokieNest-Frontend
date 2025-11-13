@@ -27,7 +27,7 @@ export interface Message {
 
 export interface Conversation {
   id: string;
-  connection_id: string;
+  connection_id: string | null; // Can be null for property inquiry conversations
   is_group: boolean;
   group_name?: string;
   created_at: string;
@@ -42,6 +42,22 @@ export interface Conversation {
   }>;
   last_message?: Message;
   unread_count?: number;
+  connection?: {
+    requester_id: number;
+    recipient_id: number;
+    requester?: {
+      first_name: string;
+      last_name: string;
+      email: string;
+      user_id: number;
+    };
+    recipient?: {
+      first_name: string;
+      last_name: string;
+      email: string;
+      user_id: number;
+    };
+  };
 }
 
 export interface TypingIndicator {
@@ -88,6 +104,108 @@ export class ChatService {
     ]);
 
     return conversation;
+  }
+
+  /**
+   * Create a direct conversation for property inquiries (bypasses connection requirement)
+   */
+  static async createPropertyInquiryConversation(
+    requesterId: number,
+    propertyOwnerId: number,
+    propertyId: string,
+    propertyName: string
+  ): Promise<Conversation> {
+    // Check if conversation already exists
+    const { data: existingConversations } = await supabase
+      .from('chat_conversations')
+      .select(`
+        *,
+        participants:conversation_participants!inner(user_id)
+      `)
+      .eq('is_group', false)
+      .is('connection_id', null);
+
+    // Find existing conversation between these two users
+    let existingConversation = null;
+    if (existingConversations) {
+      for (const conv of existingConversations) {
+        const participantIds = conv.participants?.map((p: any) => p.user_id) || [];
+        if (participantIds.includes(requesterId) && participantIds.includes(propertyOwnerId)) {
+          existingConversation = conv;
+          break;
+        }
+      }
+    }
+
+    if (existingConversation) {
+      // Return existing conversation
+      const { data: fullConv } = await supabase
+        .from('chat_conversations')
+        .select(`
+          *,
+          participants:conversation_participants(
+            user_id,
+            joined_at,
+            user:user_id(first_name, last_name, email, user_id)
+          )
+        `)
+        .eq('id', existingConversation.id)
+        .single();
+      return fullConv as Conversation;
+    }
+
+    // Create new conversation for property inquiry
+    const { data: conversation, error } = await supabase
+      .from('chat_conversations')
+      .insert({
+        is_group: false,
+        connection_id: null, // Property inquiries don't require connections
+        group_name: null
+      })
+      .select()
+      .single();
+
+    if (error) {
+      throw new Error(`Failed to create conversation: ${error.message}`);
+    }
+
+    // Add both participants
+    const { error: participantError } = await supabase
+      .from('conversation_participants')
+      .insert([
+        { conversation_id: conversation.id, user_id: requesterId },
+        { conversation_id: conversation.id, user_id: propertyOwnerId }
+      ]);
+
+    if (participantError) {
+      // Rollback
+      await supabase.from('chat_conversations').delete().eq('id', conversation.id);
+      throw new Error(`Failed to add participants: ${participantError.message}`);
+    }
+
+    // Send initial message about the property
+    await supabase.from('chat_messages').insert({
+      conversation_id: conversation.id,
+      sender_id: requesterId,
+      message_text: `Hi! I'm interested in your property: ${propertyName}`,
+      message_type: 'text'
+    });
+
+    // Fetch complete conversation
+    const { data: fullConv } = await supabase
+      .from('chat_conversations')
+      .select(`
+        *,
+        participants:conversation_participants(
+          user_id,
+          joined_at,
+          user:user_id(first_name, last_name, email, user_id)
+        )
+      `)
+      .eq('id', conversation.id)
+      .single();
+
+    return fullConv as Conversation;
   }
 
   /**
@@ -178,6 +296,7 @@ export class ChatService {
     const conversationIds = userParticipations.map(p => p.conversation_id);
 
     // Step 2: Get full conversation details with ALL participants
+    // Note: connection_id can be null for property inquiry conversations, so we use optional chaining
     const { data: conversations, error } = await supabase
       .from('chat_conversations')
       .select(`
