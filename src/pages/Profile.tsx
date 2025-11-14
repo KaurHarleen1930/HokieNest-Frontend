@@ -12,7 +12,7 @@ import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Slider } from "@/components/ui/slider";
 import { Progress } from "@/components/ui/progress";
 import { Separator } from "@/components/ui/separator";
-import { User, Mail, Shield, Calendar, Edit, Save, X, Trash2, AlertTriangle, Target, DollarSign, MapPin, Shield as ShieldIcon, Users, Settings, BarChart3, Bell, BellOff, Sun, Moon, Monitor } from "lucide-react";
+import { User, Mail, Shield, Calendar, Edit, Save, X, Trash2, AlertTriangle, Target, DollarSign, MapPin, Shield as ShieldIcon, Users, Settings, BarChart3, Bell, BellOff, Sun, Moon, Monitor, Clock } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { toast } from "sonner";
 import { HousingStatus, HousingStatusLabels } from "@/types/HousingStatus";
@@ -68,6 +68,9 @@ const Profile = () => {
   });
   const [emailNotificationsEnabled, setEmailNotificationsEnabled] = useState(true);
   const [loadingPreferences, setLoadingPreferences] = useState(false);
+  const [enableQuietHours, setEnableQuietHours] = useState(false);
+  const [quietHoursStart, setQuietHoursStart] = useState('22:00');
+  const [quietHoursEnd, setQuietHoursEnd] = useState('08:00');
   const { preference: themePreference, setPreference: setThemePreference, loading: themeLoading } = useThemePreferences();
   const { resolvedTheme } = useTheme();
   const [themeSaving, setThemeSaving] = useState(false);
@@ -237,11 +240,23 @@ const Profile = () => {
       const response = await notificationsAPI.getPreferences();
       if (response.success && response.preferences) {
         // Check if all email notifications are disabled
-        const allEmailsDisabled = 
+        const allEmailsDisabled =
           !response.preferences.email_messages &&
           !response.preferences.email_connections &&
           !response.preferences.email_matches;
         setEmailNotificationsEnabled(!allEmailsDisabled);
+
+        // Load quiet hours settings
+        if (response.preferences.enable_quiet_hours !== undefined) {
+          setEnableQuietHours(response.preferences.enable_quiet_hours);
+        }
+        if (response.preferences.quiet_hours_start) {
+          // Convert from HH:MM:SS to HH:MM for input
+          setQuietHoursStart(response.preferences.quiet_hours_start.substring(0, 5));
+        }
+        if (response.preferences.quiet_hours_end) {
+          setQuietHoursEnd(response.preferences.quiet_hours_end.substring(0, 5));
+        }
       }
     } catch (error) {
       console.error('Error fetching notification preferences:', error);
@@ -251,20 +266,20 @@ const Profile = () => {
   const handleToggleEmailNotifications = async (enabled: boolean) => {
     try {
       setLoadingPreferences(true);
-      
+
       // Update all email notification preferences at once
       const preferences = {
         email_messages: enabled,
         email_connections: enabled,
         email_matches: enabled,
       };
-      
+
       const response = await notificationsAPI.updatePreferences(preferences);
-      
+
       if (response.success) {
         setEmailNotificationsEnabled(enabled);
         toast.success(
-          enabled 
+          enabled
             ? 'Email notifications enabled for all types'
             : 'All email notifications muted'
         );
@@ -274,6 +289,69 @@ const Profile = () => {
     } catch (error) {
       console.error('Error updating notification preferences:', error);
       toast.error('Failed to update notification preferences');
+    } finally {
+      setLoadingPreferences(false);
+    }
+  };
+
+  const handleToggleQuietHours = async (enabled: boolean) => {
+    try {
+      setLoadingPreferences(true);
+
+      const preferences = {
+        enable_quiet_hours: enabled,
+        quiet_hours_start: quietHoursStart + ':00', // Convert HH:MM to HH:MM:SS
+        quiet_hours_end: quietHoursEnd + ':00',
+      };
+
+      const response = await notificationsAPI.updatePreferences(preferences);
+
+      if (response.success) {
+        setEnableQuietHours(enabled);
+        toast.success(
+          enabled
+            ? 'Quiet hours enabled'
+            : 'Quiet hours disabled'
+        );
+      } else {
+        toast.error('Failed to update quiet hours settings');
+      }
+    } catch (error) {
+      console.error('Error updating quiet hours:', error);
+      toast.error('Failed to update quiet hours settings');
+    } finally {
+      setLoadingPreferences(false);
+    }
+  };
+
+  const handleQuietHoursTimeChange = async (type: 'start' | 'end', value: string) => {
+    try {
+      setLoadingPreferences(true);
+
+      // Update local state
+      if (type === 'start') {
+        setQuietHoursStart(value);
+      } else {
+        setQuietHoursEnd(value);
+      }
+
+      // Save to backend
+      const preferences = {
+        enable_quiet_hours: enableQuietHours,
+        quiet_hours_start: (type === 'start' ? value : quietHoursStart) + ':00',
+        quiet_hours_end: (type === 'end' ? value : quietHoursEnd) + ':00',
+      };
+
+      const response = await notificationsAPI.updatePreferences(preferences);
+
+      if (response.success) {
+        toast.success('Quiet hours updated');
+      } else {
+        toast.error('Failed to update quiet hours');
+      }
+    } catch (error) {
+      console.error('Error updating quiet hours time:', error);
+      toast.error('Failed to update quiet hours');
     } finally {
       setLoadingPreferences(false);
     }
@@ -788,27 +866,82 @@ const Profile = () => {
                     </div>
                   </div>
                   
-                  <div className="flex items-center justify-between p-4 bg-muted/50 rounded-lg">
-                    <div className="flex items-center gap-3">
-                      {emailNotificationsEnabled ? (
-                        <Bell className="h-5 w-5 text-primary" />
-                      ) : (
-                        <BellOff className="h-5 w-5 text-muted-foreground" />
-                      )}
-                      <div>
-                        <p className="font-medium">Email Notifications</p>
-                        <p className="text-sm text-muted-foreground">
-                          {emailNotificationsEnabled
-                            ? 'You will receive email notifications for messages, connections, and matches'
-                            : 'All email notifications are currently muted'}
-                        </p>
+                  <div className="space-y-4">
+                    <div className="flex items-center justify-between p-4 bg-muted/50 rounded-lg">
+                      <div className="flex items-center gap-3">
+                        {emailNotificationsEnabled ? (
+                          <Bell className="h-5 w-5 text-primary" />
+                        ) : (
+                          <BellOff className="h-5 w-5 text-muted-foreground" />
+                        )}
+                        <div>
+                          <p className="font-medium">Email Notifications</p>
+                          <p className="text-sm text-muted-foreground">
+                            {emailNotificationsEnabled
+                              ? 'You will receive email notifications for messages, connections, and matches'
+                              : 'All email notifications are currently muted'}
+                          </p>
+                        </div>
                       </div>
+                      <Switch
+                        checked={emailNotificationsEnabled}
+                        onCheckedChange={handleToggleEmailNotifications}
+                        disabled={loadingPreferences}
+                      />
                     </div>
-                    <Switch
-                      checked={emailNotificationsEnabled}
-                      onCheckedChange={handleToggleEmailNotifications}
-                      disabled={loadingPreferences}
-                    />
+
+                    {/* Quiet Hours Settings */}
+                    <div className="p-4 border rounded-lg space-y-4">
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-3">
+                          <Clock className="h-5 w-5 text-primary" />
+                          <div>
+                            <p className="font-medium">Quiet Hours</p>
+                            <p className="text-sm text-muted-foreground">
+                              {enableQuietHours
+                                ? `No email notifications from ${quietHoursStart} to ${quietHoursEnd}`
+                                : 'Set times when you don\'t want to receive email notifications'}
+                            </p>
+                          </div>
+                        </div>
+                        <Switch
+                          checked={enableQuietHours}
+                          onCheckedChange={handleToggleQuietHours}
+                          disabled={loadingPreferences || !emailNotificationsEnabled}
+                        />
+                      </div>
+
+                      {enableQuietHours && (
+                        <div className="grid grid-cols-2 gap-4 pt-2">
+                          <div>
+                            <Label htmlFor="quietHoursStart" className="text-sm">
+                              Start Time
+                            </Label>
+                            <Input
+                              id="quietHoursStart"
+                              type="time"
+                              value={quietHoursStart}
+                              onChange={(e) => handleQuietHoursTimeChange('start', e.target.value)}
+                              disabled={loadingPreferences}
+                              className="mt-1"
+                            />
+                          </div>
+                          <div>
+                            <Label htmlFor="quietHoursEnd" className="text-sm">
+                              End Time
+                            </Label>
+                            <Input
+                              id="quietHoursEnd"
+                              type="time"
+                              value={quietHoursEnd}
+                              onChange={(e) => handleQuietHoursTimeChange('end', e.target.value)}
+                              disabled={loadingPreferences}
+                              className="mt-1"
+                            />
+                          </div>
+                        </div>
+                      )}
+                    </div>
                   </div>
                 </div>
 

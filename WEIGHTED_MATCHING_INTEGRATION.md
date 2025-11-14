@@ -125,8 +125,3 @@ The enhanced roommate matching system adds **weight assignments** for important 
 
 This creates a much more personalized and intelligent roommate matching experience! 🎉
 
-
-
-
-
-

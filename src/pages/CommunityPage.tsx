@@ -226,7 +226,11 @@ export default function CommunityPage() {
         body: JSON.stringify({ reason: flagReason }),
       });
 
-      if (!res.ok) throw new Error("Failed to flag post");
+      if (!res.ok) {
+        const errorData = await res.json();
+        throw new Error(errorData.message || "Failed to flag post");
+      }
+
       toast({
         title: "Post flagged",
         description: "Thank you for reporting this post.",

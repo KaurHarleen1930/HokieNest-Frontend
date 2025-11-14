@@ -163,6 +163,18 @@ router.post("/:id/flag", authenticateToken as any, async (req: any, res: Respons
     if (!reason) return res.status(400).json({ message: "Reason required" });
     if (!appUserId) return res.status(401).json({ message: "User not authenticated" });
 
+    // Check if user has already flagged this post
+    const { data: existingFlag } = await supabase
+      .from("post_flags")
+      .select("id")
+      .eq("post_id", id)
+      .eq("user_id", appUserId)
+      .maybeSingle();
+
+    if (existingFlag) {
+      return res.status(400).json({ message: "You have already reported this post" });
+    }
+
     // Insert flag using backend user_id directly
     const { data, error } = await supabase
       .from("post_flags")

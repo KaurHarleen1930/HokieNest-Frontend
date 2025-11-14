@@ -6,25 +6,26 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { ErrorState } from "@/components/ui/error-state";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { usersAPI, roommatesAPI, User } from "@/lib/api";
+import { usersAPI, User } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
-import { Shield, Users, UserX, AlertTriangle, Settings, Save, RotateCcw } from "lucide-react";
+import { Shield, Users, UserX, AlertTriangle, Search, UserCheck, FileText, BarChart3, Flag } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
+import { AdminLogsTable } from "@/components/admin/AdminLogsTable";
+import { ReportsManagement } from "@/components/admin/ReportsManagement";
+import { AnalyticsDashboard } from "@/components/admin/AnalyticsDashboard";
+import { AdminManagement } from "@/components/admin/AdminManagement";
+import { PermissionGuard } from "@/components/PermissionGuard";
 
 export default function Admin() {
   const [users, setUsers] = useState<User[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [suspendingUsers, setSuspendingUsers] = useState<Set<string>>(new Set());
-  
-  // Matching weights state
-  const [matchingWeights, setMatchingWeights] = useState<any>({});
-  const [weightsLoading, setWeightsLoading] = useState(false);
-  const [savingWeights, setSavingWeights] = useState(false);
-  
-  const { user: currentUser } = useAuth();
+  const [unsuspendingUsers, setUnsuspendingUsers] = useState<Set<string>>(new Set());
+  const [searchQuery, setSearchQuery] = useState("");
+
+  const { user: currentUser, hasPermission, hasAnyPermission } = useAuth();
   const { toast } = useToast();
 
   const fetchUsers = async () => {
@@ -40,27 +41,25 @@ export default function Admin() {
     }
   };
 
-  const fetchMatchingWeights = async () => {
-    try {
-      setWeightsLoading(true);
-      const response = await roommatesAPI.getWeights();
-      setMatchingWeights(response.weights);
-    } catch (err) {
-      console.error('Failed to fetch matching weights:', err);
-      toast({
-        title: "Error",
-        description: "Failed to fetch matching weights",
-        variant: "destructive",
-      });
-    } finally {
-      setWeightsLoading(false);
-    }
-  };
-
   useEffect(() => {
-    fetchUsers();
-    fetchMatchingWeights();
-  }, []);
+    // Only fetch users if the current admin has permission
+    if (hasPermission('view_all_users')) {
+      fetchUsers();
+    } else {
+      // If no permission, just stop loading
+      setLoading(false);
+    }
+  }, [hasPermission]);
+
+  // Client-side filtering
+  const filteredUsers = users.filter(user => {
+    if (!searchQuery.trim()) return true;
+    const query = searchQuery.toLowerCase();
+    return (
+      user.name.toLowerCase().includes(query) ||
+      user.email.toLowerCase().includes(query)
+    );
+  });
 
   const handleSuspendUser = async (userId: string) => {
     if (userId === currentUser?.id) {
@@ -75,9 +74,9 @@ export default function Admin() {
     try {
       setSuspendingUsers(prev => new Set(prev).add(userId));
       await usersAPI.suspend(userId);
-      
+
       // Update local state
-      setUsers(prev => prev.map(user => 
+      setUsers(prev => prev.map(user =>
         user.id === userId ? { ...user, suspended: true } : user
       ));
 
@@ -100,61 +99,38 @@ export default function Admin() {
     }
   };
 
-  const handleSaveWeights = async () => {
+  const handleUnsuspendUser = async (userId: string) => {
     try {
-      setSavingWeights(true);
-      await roommatesAPI.updateWeights(matchingWeights);
-      
+      setUnsuspendingUsers(prev => new Set(prev).add(userId));
+      await usersAPI.unsuspend(userId);
+
+      // Update local state
+      setUsers(prev => prev.map(user =>
+        user.id === userId ? { ...user, suspended: false } : user
+      ));
+
       toast({
-        title: "Weights Updated",
-        description: "Roommate matching weights have been updated successfully.",
+        title: "User unsuspended",
+        description: "The user has been successfully unsuspended.",
       });
     } catch (err) {
       toast({
-        title: "Update Failed",
-        description: err instanceof Error ? err.message : "Failed to update weights",
+        title: "Unsuspension failed",
+        description: err instanceof Error ? err.message : "Failed to unsuspend user",
         variant: "destructive",
       });
     } finally {
-      setSavingWeights(false);
+      setUnsuspendingUsers(prev => {
+        const newSet = new Set(prev);
+        newSet.delete(userId);
+        return newSet;
+      });
     }
   };
 
-  const handleResetWeights = async () => {
-    try {
-      setSavingWeights(true);
-      await roommatesAPI.resetWeights();
-      await fetchMatchingWeights(); // Refresh the weights
-      
-      toast({
-        title: "Weights Reset",
-        description: "Roommate matching weights have been reset to defaults.",
-      });
-    } catch (err) {
-      toast({
-        title: "Reset Failed",
-        description: err instanceof Error ? err.message : "Failed to reset weights",
-        variant: "destructive",
-      });
-    } finally {
-      setSavingWeights(false);
-    }
-  };
 
-  const updateWeight = (key: string, value: string) => {
-    const numValue = parseInt(value) || 0;
-    setMatchingWeights((prev: any) => ({
-      ...prev,
-      [key]: numValue
-    }));
-  };
-
-  const getTotalWeight = () => {
-    return Object.values(matchingWeights).reduce((sum: number, weight: any) => sum + (weight || 0), 0);
-  };
-
-  // Check if current user is admin
-  if (currentUser?.role !== 'admin') {
+  // Check if current user is admin (either has admin role OR has adminRole/permissions)
+  if (currentUser?.role !== 'admin' && !currentUser?.adminRole) {
     return (
       <div className="min-h-screen bg-background">
         <div className="container mx-auto px-4 py-8">
@@ -168,7 +144,9 @@ export default function Admin() {
     );
   }
 
-  if (loading) {
+  // Only show loading/error states if user has permission to view users
+  // Otherwise, let them access other tabs they have permission for
+  if (loading && hasPermission('view_all_users')) {
     return (
       <div className="min-h-screen bg-background">
         <div className="container mx-auto px-4 py-8">
@@ -181,7 +159,7 @@ export default function Admin() {
     );
   }
 
-  if (error) {
+  if (error && hasPermission('view_all_users')) {
     return (
       <div className="min-h-screen bg-background">
         <div className="container mx-auto px-4 py-8">
@@ -203,25 +181,83 @@ export default function Admin() {
     }
   };
 
-  const activeUsers = users.filter(user => !user.suspended);
-  const suspendedUsers = users.filter(user => user.suspended);
+  const activeUsers = filteredUsers.filter(user => !user.suspended);
+  const suspendedUsers = filteredUsers.filter(user => user.suspended);
+
+  // Determine default tab based on permissions
+  const getDefaultTab = () => {
+    if (hasPermission('view_all_users')) return 'users';
+    if (hasPermission('manage_admins')) return 'admin-management';
+    if (hasPermission('view_analytics')) return 'analytics';
+    if (hasPermission('review_reports')) return 'reports';
+    if (hasPermission('view_admin_logs')) return 'logs';
+    return 'users'; // Fallback
+  };
 
   return (
     <div className="min-h-screen bg-background">
       <div className="container mx-auto px-4 py-8">
         {/* Header */}
         <div className="mb-8">
-          <div className="flex items-center gap-3 mb-4">
-            <Shield className="h-8 w-8 text-accent" />
-            <h1 className="text-3xl font-bold text-foreground">Admin Panel</h1>
+          <div className="flex items-center justify-between mb-4">
+            <div className="flex items-center gap-3">
+              <Shield className="h-8 w-8 text-accent" />
+              <h1 className="text-3xl font-bold text-foreground">Admin Panel</h1>
+            </div>
+            {currentUser?.adminRole && (
+              <Badge
+                variant={
+                  currentUser.adminRole === 'SUPER_ADMIN'
+                    ? 'destructive'
+                    : currentUser.adminRole === 'CONTENT_ADMIN'
+                    ? 'default'
+                    : 'accent'
+                }
+                className="text-sm px-3 py-1"
+              >
+                {currentUser.adminRole.replace('_', ' ')}
+              </Badge>
+            )}
           </div>
           <p className="text-muted">Manage users and platform settings</p>
         </div>
 
-        <Tabs defaultValue="users" className="space-y-6">
+        <Tabs defaultValue={getDefaultTab()} className="space-y-6">
           <TabsList>
-            <TabsTrigger value="users">User Management</TabsTrigger>
-            <TabsTrigger value="matching">Roommate Matching</TabsTrigger>
+            <PermissionGuard permission="view_all_users">
+              <TabsTrigger value="users">
+                <Users className="h-4 w-4 mr-2" />
+                User Management
+              </TabsTrigger>
+            </PermissionGuard>
+
+            <PermissionGuard permission="manage_admins">
+              <TabsTrigger value="admin-management">
+                <Shield className="h-4 w-4 mr-2" />
+                Admin Management
+              </TabsTrigger>
+            </PermissionGuard>
+
+            <PermissionGuard permission="view_analytics">
+              <TabsTrigger value="analytics">
+                <BarChart3 className="h-4 w-4 mr-2" />
+                Analytics
+              </TabsTrigger>
+            </PermissionGuard>
+
+            <PermissionGuard permission="review_reports">
+              <TabsTrigger value="reports">
+                <Flag className="h-4 w-4 mr-2" />
+                Reports
+              </TabsTrigger>
+            </PermissionGuard>
+
+            <PermissionGuard permission="view_admin_logs">
+              <TabsTrigger value="logs">
+                <FileText className="h-4 w-4 mr-2" />
+                Admin Logs
+              </TabsTrigger>
+            </PermissionGuard>
           </TabsList>
 
           <TabsContent value="users" className="space-y-6">
@@ -281,6 +317,19 @@ export default function Admin() {
                 </CardDescription>
               </CardHeader>
               <CardContent>
+                {/* Search Input */}
+                <div className="mb-4">
+                  <div className="relative">
+                    <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                    <Input
+                      placeholder="Search users by name or email..."
+                      value={searchQuery}
+                      onChange={(e) => setSearchQuery(e.target.value)}
+                      className="pl-10"
+                    />
+                  </div>
+                </div>
+
                 <div className="overflow-x-auto">
                   <Table>
                     <TableHeader>
@@ -293,7 +342,7 @@ export default function Admin() {
                       </TableRow>
                     </TableHeader>
                     <TableBody>
-                      {users.map((user) => (
+                      {filteredUsers.map((user) => (
                         <TableRow key={user.id}>
                           <TableCell className="font-medium text-foreground">
                             {user.name}
@@ -312,22 +361,38 @@ export default function Admin() {
                             </Badge>
                           </TableCell>
                           <TableCell className="text-right">
-                            {user.role !== 'admin' && !user.suspended && (
-                              <Button
-                                variant="destructive"
-                                size="sm"
-                                onClick={() => handleSuspendUser(user.id)}
-                                disabled={suspendingUsers.has(user.id)}
-                                data-testid={`suspend-user-${user.id}`}
-                              >
-                                {suspendingUsers.has(user.id) ? "Suspending..." : "Suspend"}
-                              </Button>
-                            )}
-                            {user.id === currentUser?.id && (
-                              <Badge variant="muted" className="text-xs">
-                                You
-                              </Badge>
-                            )}
+                            <div className="flex items-center justify-end gap-2">
+                              {user.id === currentUser?.id ? (
+                                <Badge variant="muted" className="text-xs">
+                                  You
+                                </Badge>
+                              ) : user.role !== 'admin' ? (
+                                <>
+                                  {user.suspended ? (
+                                    <Button
+                                      variant="default"
+                                      size="sm"
+                                      onClick={() => handleUnsuspendUser(user.id)}
+                                      disabled={unsuspendingUsers.has(user.id)}
+                                    >
+                                      <UserCheck className="h-4 w-4 mr-1" />
+                                      {unsuspendingUsers.has(user.id) ? "Unsuspending..." : "Unsuspend"}
+                                    </Button>
+                                  ) : (
+                                    <Button
+                                      variant="secondary"
+                                      size="sm"
+                                      onClick={() => handleSuspendUser(user.id)}
+                                      disabled={suspendingUsers.has(user.id)}
+                                      data-testid={`suspend-user-${user.id}`}
+                                    >
+                                      <UserX className="h-4 w-4 mr-1" />
+                                      {suspendingUsers.has(user.id) ? "Suspending..." : "Suspend"}
+                                    </Button>
+                                  )}
+                                </>
+                              ) : null}
+                            </div>
                           </TableCell>
                         </TableRow>
                       ))}
@@ -338,228 +403,28 @@ export default function Admin() {
             </Card>
           </TabsContent>
 
-          <TabsContent value="matching" className="space-y-6">
-            <Card className="bg-surface border-surface-3">
-              <CardHeader>
-                <div className="flex items-center gap-2">
-                  <Settings className="h-5 w-5" />
-                  <CardTitle>Roommate Matching Weights</CardTitle>
-                </div>
-                <CardDescription>
-                  Configure how roommate compatibility is calculated. Weights must total 100%.
-                </CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-6">
-                {weightsLoading ? (
-                  <div className="flex items-center justify-center py-8">
-                    <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
-                  </div>
-                ) : (
-                  <>
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                      <div className="space-y-4">
-                        <div className="flex items-center justify-between">
-                          <Label htmlFor="budget">Budget Compatibility</Label>
-                          <Input
-                            id="budget"
-                            type="number"
-                            min="0"
-                            max="100"
-                            value={matchingWeights.budget || 0}
-                            onChange={(e) => updateWeight('budget', e.target.value)}
-                            className="w-20"
-                          />
-                        </div>
-                        <div className="flex items-center justify-between">
-                          <Label htmlFor="sleepSchedule">Sleep Schedule</Label>
-                          <Input
-                            id="sleepSchedule"
-                            type="number"
-                            min="0"
-                            max="100"
-                            value={matchingWeights.sleepSchedule || 0}
-                            onChange={(e) => updateWeight('sleepSchedule', e.target.value)}
-                            className="w-20"
-                          />
-                        </div>
-                        <div className="flex items-center justify-between">
-                          <Label htmlFor="cleanliness">Cleanliness Level</Label>
-                          <Input
-                            id="cleanliness"
-                            type="number"
-                            min="0"
-                            max="100"
-                            value={matchingWeights.cleanliness || 0}
-                            onChange={(e) => updateWeight('cleanliness', e.target.value)}
-                            className="w-20"
-                          />
-                        </div>
-                        <div className="flex items-center justify-between">
-                          <Label htmlFor="socialVibe">Social Vibe</Label>
-                          <Input
-                            id="socialVibe"
-                            type="number"
-                            min="0"
-                            max="100"
-                            value={matchingWeights.socialVibe || 0}
-                            onChange={(e) => updateWeight('socialVibe', e.target.value)}
-                            className="w-20"
-                          />
-                        </div>
-                        <div className="flex items-center justify-between">
-                          <Label htmlFor="moveInDate">Move-in Date</Label>
-                          <Input
-                            id="moveInDate"
-                            type="number"
-                            min="0"
-                            max="100"
-                            value={matchingWeights.moveInDate || 0}
-                            onChange={(e) => updateWeight('moveInDate', e.target.value)}
-                            className="w-20"
-                          />
-                        </div>
-                        <div className="flex items-center justify-between">
-                          <Label htmlFor="leaseLength">Lease Length</Label>
-                          <Input
-                            id="leaseLength"
-                            type="number"
-                            min="0"
-                            max="100"
-                            value={matchingWeights.leaseLength || 0}
-                            onChange={(e) => updateWeight('leaseLength', e.target.value)}
-                            className="w-20"
-                          />
-                        </div>
-                        <div className="flex items-center justify-between">
-                          <Label htmlFor="distance">Distance Preference</Label>
-                          <Input
-                            id="distance"
-                            type="number"
-                            min="0"
-                            max="100"
-                            value={matchingWeights.distance || 0}
-                            onChange={(e) => updateWeight('distance', e.target.value)}
-                            className="w-20"
-                          />
-                        </div>
-                      </div>
-                      
-                      <div className="space-y-4">
-                        <div className="flex items-center justify-between">
-                          <Label htmlFor="quietHours">Quiet Hours</Label>
-                          <Input
-                            id="quietHours"
-                            type="number"
-                            min="0"
-                            max="100"
-                            value={matchingWeights.quietHours || 0}
-                            onChange={(e) => updateWeight('quietHours', e.target.value)}
-                            className="w-20"
-                          />
-                        </div>
-                        <div className="flex items-center justify-between">
-                          <Label htmlFor="chores">Chores Preference</Label>
-                          <Input
-                            id="chores"
-                            type="number"
-                            min="0"
-                            max="100"
-                            value={matchingWeights.chores || 0}
-                            onChange={(e) => updateWeight('chores', e.target.value)}
-                            className="w-20"
-                          />
-                        </div>
-                        <div className="flex items-center justify-between">
-                          <Label htmlFor="guests">Guests Frequency</Label>
-                          <Input
-                            id="guests"
-                            type="number"
-                            min="0"
-                            max="100"
-                            value={matchingWeights.guests || 0}
-                            onChange={(e) => updateWeight('guests', e.target.value)}
-                            className="w-20"
-                          />
-                        </div>
-                        <div className="flex items-center justify-between">
-                          <Label htmlFor="workFromHome">Work from Home</Label>
-                          <Input
-                            id="workFromHome"
-                            type="number"
-                            min="0"
-                            max="100"
-                            value={matchingWeights.workFromHome || 0}
-                            onChange={(e) => updateWeight('workFromHome', e.target.value)}
-                            className="w-20"
-                          />
-                        </div>
-                        <div className="flex items-center justify-between">
-                          <Label htmlFor="pets">Pet Compatibility</Label>
-                          <Input
-                            id="pets"
-                            type="number"
-                            min="0"
-                            max="100"
-                            value={matchingWeights.pets || 0}
-                            onChange={(e) => updateWeight('pets', e.target.value)}
-                            className="w-20"
-                          />
-                        </div>
-                        <div className="flex items-center justify-between">
-                          <Label htmlFor="smoking">Smoking Policy</Label>
-                          <Input
-                            id="smoking"
-                            type="number"
-                            min="0"
-                            max="100"
-                            value={matchingWeights.smoking || 0}
-                            onChange={(e) => updateWeight('smoking', e.target.value)}
-                            className="w-20"
-                          />
-                        </div>
-                      </div>
-                    </div>
+          <TabsContent value="admin-management" className="space-y-6">
+            <PermissionGuard permission="manage_admins">
+              <AdminManagement />
+            </PermissionGuard>
+          </TabsContent>
 
-                    <div className="flex items-center justify-between p-4 bg-muted rounded-lg">
-                      <div>
-                        <p className="font-medium">Total Weight</p>
-                        <p className="text-sm text-muted-foreground">
-                          {getTotalWeight()}% {getTotalWeight() !== 100 ? '(Must equal 100%)' : ''}
-                        </p>
-                      </div>
-                      <div className="flex gap-2">
-                        <Button
-                          variant="outline"
-                          onClick={handleResetWeights}
-                          disabled={savingWeights}
-                          className="gap-2"
-                        >
-                          <RotateCcw className="h-4 w-4" />
-                          Reset to Default
-                        </Button>
-                        <Button
-                          onClick={handleSaveWeights}
-                          disabled={savingWeights || getTotalWeight() !== 100}
-                          className="gap-2"
-                        >
-                          <Save className="h-4 w-4" />
-                          {savingWeights ? 'Saving...' : 'Save Changes'}
-                        </Button>
-                      </div>
-                    </div>
+          <TabsContent value="analytics" className="space-y-6">
+            <PermissionGuard permission="view_analytics">
+              <AnalyticsDashboard />
+            </PermissionGuard>
+          </TabsContent>
 
-                    {getTotalWeight() !== 100 && (
-                      <Alert className="border-warning/20 bg-warning/10">
-                        <AlertTriangle className="h-4 w-4 text-warning" />
-                        <AlertDescription className="text-warning">
-                          The total weight must equal 100% before saving. Current total: {getTotalWeight()}%
-                        </AlertDescription>
-                      </Alert>
-                    )}
-                  </>
-                )}
-              </CardContent>
-            </Card>
+          <TabsContent value="reports" className="space-y-6">
+            <PermissionGuard permission="review_reports">
+              <ReportsManagement />
+            </PermissionGuard>
+          </TabsContent>
+
+          <TabsContent value="logs" className="space-y-6">
+            <PermissionGuard permission="view_admin_logs">
+              <AdminLogsTable />
+            </PermissionGuard>
           </TabsContent>
         </Tabs>
       </div>

@@ -54,6 +54,8 @@ export default function Login() {
       setError('Google authentication failed. Please try again.');
     } else if (errorParam === 'no_user') {
       setError('Authentication failed. Please try again.');
+    } else if (errorParam === 'account_suspended' || errorParam === 'account_suspended_or_invalid') {
+      setError('Your account has been suspended. Please contact support for more information.');
     }
   }, []);
 

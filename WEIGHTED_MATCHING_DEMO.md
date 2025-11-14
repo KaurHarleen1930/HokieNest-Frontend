@@ -111,8 +111,3 @@ Example:
 
 The system now provides a much more intelligent and personalized roommate matching experience! 🎉
 
-
-
-
-
-
