@@ -103,6 +103,43 @@ router.post('/conversations/group', async (req: AuthRequest, res: Response) => {
 });
 
 /**
+ * Create a conversation for property inquiry
+ * POST /api/v1/chat/property-inquiry
+ */
+router.post('/property-inquiry', async (req: AuthRequest, res: Response) => {
+  try {
+    if (!requireAuth(req, res)) return;
+    
+    const userId = parseInt(req.user!.id);
+    const { property_owner_id, property_id, property_name } = req.body;
+
+    if (!property_owner_id || !property_id || !property_name) {
+      return res.status(400).json({ error: 'Property owner ID, property ID, and property name are required' });
+    }
+
+    if (userId === parseInt(property_owner_id)) {
+      return res.status(400).json({ error: 'Cannot message yourself' });
+    }
+
+    const conversation = await ChatService.createPropertyInquiryConversation(
+      userId,
+      parseInt(property_owner_id),
+      property_id,
+      property_name
+    );
+
+    res.status(201).json({
+      success: true,
+      conversation,
+      message: 'Conversation created successfully'
+    });
+  } catch (error: any) {
+    console.error('Error creating property inquiry conversation:', error);
+    res.status(400).json({ error: error.message });
+  }
+});
+
+/**
  * Get messages for a conversation (paginated)
  * GET /api/v1/chat/conversations/:id/messages
  */

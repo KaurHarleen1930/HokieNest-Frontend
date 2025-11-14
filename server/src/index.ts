@@ -1,11 +1,14 @@
 // server/src/index.ts - COMPLETE WORKING VERSION
+import 'dotenv/config';
 import express from 'express';
 import cors from 'cors';
 import dotenv from 'dotenv';
+
 import session from 'express-session';
 import passport from 'passport';
 import { authRoutes } from './routes/auth';
 import { listingRoutes } from './routes/listings';
+import roomListingsRoutes from './routes/room-listings';
 import { adminRoutes } from './routes/admin';
 import { reportsRoutes } from './routes/reports';
 import { analyticsRoutes } from './routes/analytics';
@@ -25,7 +28,10 @@ import { supabase } from './lib/supabase';
 
 import attractionsRouter from './routes/attractions';
 import transitRouter from './routes/transit';
+import { communityRoutesGlobal } from "./routes/community.global";
 
+console.log("✅ SUPABASE_URL =", process.env.SUPABASE_URL);
+console.log("✅ SUPABASE_SERVICE_ROLE_KEY length =", process.env.SUPABASE_SERVICE_ROLE_KEY?.length);
 dotenv.config({ path: './.env' });
 
 const app = express();
@@ -33,7 +39,7 @@ const PORT = process.env.PORT || 4000;
 
 // Middleware
 app.use(cors({
-  origin: ['http://localhost:5173', 'http://localhost:5174', 'http://localhost:8080', "http://localhost:8087", 'http://localhost:3000'],
+  origin: ['http://localhost:5173', 'http://localhost:5174', 'http://localhost:8080', "http://localhost:8082",'http://localhost:8086', 'http://localhost:3000'],
   credentials: true,
 }));
 
@@ -61,6 +67,7 @@ app.get('/health', (req, res) => {
 // Register ALL API routes
 app.use('/api/v1/auth', authRoutes);
 app.use('/api/v1/listings', listingRoutes);
+app.use('/api/v1/room-listings', roomListingsRoutes);
 app.use('/api/v1/admin', adminRoutes);
 app.use('/api/v1/reports', reportsRoutes);
 app.use('/api/v1/analytics', analyticsRoutes);
@@ -75,6 +82,8 @@ app.use('/api/v1/status', statusRoutes);
 app.use('/api/v1/favorites', favoritesRoutes);
 app.use('/api/v1/map', mapRoutes);
 app.use('/api/v1/settings', settingsRoutes);
+app.use("/api/v1/community", communityRoutesGlobal);
+
 
 // Register simple attractions and transit routes
 console.log('📍 Registering attractions router...');

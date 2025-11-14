@@ -118,6 +118,16 @@ router.get('/matches', authenticateToken as any, async (req: any, res: Response,
         errors: error.errors,
       });
     }
+
+    // Handle incomplete profile error specifically
+    if (error instanceof Error && error.message === 'User profile not found') {
+      return res.status(400).json({
+        message: 'Complete your profile to find roommate matches',
+        details: 'Please complete both housing preferences and lifestyle preferences to start finding matches.',
+        requiresAction: 'complete_profile'
+      });
+    }
+
     console.error('Error finding roommate matches:', error);
     next(error);
   }

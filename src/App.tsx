@@ -31,7 +31,14 @@ import ChatbotWidget from "./components/ChatbotWidget";
 import Messages from "./pages/Messages";
 import Conversation from "./pages/Conversation";
 import 'leaflet/dist/leaflet.css';
-import PropertyDetailsWithAmenities from '@/components/Property/PropertyDetailsWithAmenities';
+import PostListing from "./pages/PostListing";
+import VTCommunity from "./pages/VTCommunity";
+import CommunityPage from "@/pages/CommunityPage";
+import { supabase } from "@/lib/supabase";
+
+supabase.auth.getSession().then(({ data }) => {
+  console.log("🔑 Restored session:", data.session);
+});
 
 const queryClient = new QueryClient();
 
@@ -80,9 +87,18 @@ const App = () => (
                 </ProtectedRoute>
               } />
               <Route path="/properties" element={<Properties />} />
-              <Route path="/__debug/listings" element={<ListingsDebug />} /> {/* 👈 add this */}
-              <Route 
-        path="/properties/:id"         element={<PropertyDetail />}       />
+              <Route path="/post-listing" element={
+                <ProtectedRoute>
+                  <PostListing />
+                </ProtectedRoute>
+              } />
+              <Route path="/vt-community" element={<VTCommunity />} />
+              <Route path="/community" element={<CommunityPage />} />
+              <Route path="/__debug/listings" element={<ListingsDebug />} />
+              <Route
+                path="/properties/:id"
+                element={<PropertyDetail />}
+              />
               <Route path="/profile" element={
                 <ProtectedRoute>
                   <Profile />
@@ -98,21 +114,17 @@ const App = () => (
                   <Admin />
                 </ProtectedRoute>
               } />
-              <Route 
-                path="/properties/:id" 
-                element={<PropertyDetailsWithAmenities />} 
-              />
               <Route path="/messages" element={
-  <ProtectedRoute>
-    <Messages />
-  </ProtectedRoute>
-} />
+                <ProtectedRoute>
+                  <Messages />
+                </ProtectedRoute>
+              } />
               <Route path="/conversation/:conversationId" element={
-  <ProtectedRoute>
-    <Conversation />
-  </ProtectedRoute>
-} />
-{/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
+                <ProtectedRoute>
+                  <Conversation />
+                </ProtectedRoute>
+              } />
+              {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
               <Route path="*" element={<NotFound />} />
                 </Routes>
                 <ChatbotWidget />
