@@ -148,7 +148,6 @@ export function AdminLogsTable() {
                     <TableHead>Admin</TableHead>
                     <TableHead>Action</TableHead>
                     <TableHead>Target User</TableHead>
-                    <TableHead>IP Address</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -164,9 +163,6 @@ export function AdminLogsTable() {
                         </Badge>
                       </TableCell>
                       <TableCell>{formatTargetName(log)}</TableCell>
-                      <TableCell className="font-mono text-xs">
-                        {log.ip_address || 'N/A'}
-                      </TableCell>
                     </TableRow>
                   ))}
                 </TableBody>

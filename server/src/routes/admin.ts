@@ -243,4 +243,236 @@ router.get('/me/permissions', requireAdmin, async (req: AuthRequest, res, next) 
   }
 });
 
+// Create a new admin user
+// Requires: manage_admins permission (SUPER_ADMIN only)
+router.post('/admins', requirePermission('manage_admins'), createAdminLogger(AdminAction.CREATE_ADMIN), async (req: AuthRequest, res, next) => {
+  try {
+    const { userId, role, permissions } = req.body;
+
+    // Validate input
+    if (!userId || !role) {
+      return res.status(400).json({ message: 'userId and role are required' });
+    }
+
+    // Validate role
+    const validRoles = ['SUPER_ADMIN', 'CONTENT_ADMIN', 'COMMUNITY_ADMIN'];
+    if (!validRoles.includes(role)) {
+      return res.status(400).json({ message: 'Invalid role' });
+    }
+
+    // Check if user exists
+    const { data: user, error: userError } = await supabase
+      .from('users')
+      .select('user_id, email, first_name, last_name')
+      .eq('user_id', userId)
+      .single();
+
+    if (userError || !user) {
+      return res.status(404).json({ message: 'User not found' });
+    }
+
+    // Check if user is already an admin
+    const { data: existingAdmin } = await supabase
+      .from('admin_users')
+      .select('admin_id')
+      .eq('user_id', userId)
+      .single();
+
+    if (existingAdmin) {
+      return res.status(400).json({ message: 'User is already an admin' });
+    }
+
+    // Create admin user
+    const { data: newAdmin, error: adminError } = await supabase
+      .from('admin_users')
+      .insert({
+        user_id: userId,
+        email: user.email,
+        first_name: user.first_name,
+        last_name: user.last_name,
+        role,
+        is_active: true,
+      })
+      .select()
+      .single();
+
+    if (adminError) {
+      throw adminError;
+    }
+
+    // Mark user as admin in users table
+    await supabase
+      .from('users')
+      .update({ is_admin: true })
+      .eq('user_id', userId);
+
+    // Assign permissions if provided
+    if (permissions && Array.isArray(permissions) && permissions.length > 0) {
+      // Get permission IDs
+      const { data: permissionData } = await supabase
+        .from('admin_permissions')
+        .select('permission_id, name')
+        .in('name', permissions);
+
+      if (permissionData && permissionData.length > 0) {
+        const permissionsToInsert = permissionData.map(p => ({
+          admin_id: newAdmin.admin_id,
+          permission_id: p.permission_id,
+        }));
+
+        await supabase
+          .from('admin_user_permissions')
+          .insert(permissionsToInsert);
+      }
+    }
+
+    res.status(201).json({ success: true, message: 'Admin created successfully', admin: newAdmin });
+  } catch (error) {
+    next(error);
+  }
+});
+
+// Update admin role
+// Requires: manage_admins permission (SUPER_ADMIN only)
+router.put('/admins/:adminId/role', requirePermission('manage_admins'), createAdminLogger(AdminAction.UPDATE_ADMIN), async (req: AuthRequest, res, next) => {
+  try {
+    const { adminId } = req.params;
+    const { role } = req.body;
+
+    // Validate role
+    const validRoles = ['SUPER_ADMIN', 'CONTENT_ADMIN', 'COMMUNITY_ADMIN'];
+    if (!validRoles.includes(role)) {
+      return res.status(400).json({ message: 'Invalid role' });
+    }
+
+    // Prevent admin from demoting themselves
+    const { data: targetAdmin } = await supabase
+      .from('admin_users')
+      .select('user_id')
+      .eq('admin_id', adminId)
+      .single();
+
+    if (targetAdmin && targetAdmin.user_id.toString() === req.user!.id) {
+      return res.status(400).json({ message: 'Cannot modify your own admin role' });
+    }
+
+    // Update admin role
+    const { error: updateError } = await supabase
+      .from('admin_users')
+      .update({ role })
+      .eq('admin_id', adminId);
+
+    if (updateError) {
+      throw updateError;
+    }
+
+    res.json({ success: true, message: 'Admin role updated successfully' });
+  } catch (error) {
+    next(error);
+  }
+});
+
+// Update admin permissions (set specific permissions)
+// Requires: manage_admins permission (SUPER_ADMIN only)
+router.put('/admins/:adminId/permissions', requirePermission('manage_admins'), createAdminLogger(AdminAction.UPDATE_ADMIN), async (req: AuthRequest, res, next) => {
+  try {
+    const { adminId } = req.params;
+    const { permissions } = req.body;
+
+    if (!Array.isArray(permissions)) {
+      return res.status(400).json({ message: 'Permissions must be an array' });
+    }
+
+    // Prevent admin from modifying their own permissions
+    const { data: targetAdmin } = await supabase
+      .from('admin_users')
+      .select('user_id')
+      .eq('admin_id', adminId)
+      .single();
+
+    if (targetAdmin && targetAdmin.user_id.toString() === req.user!.id) {
+      return res.status(400).json({ message: 'Cannot modify your own permissions' });
+    }
+
+    // Delete all existing permissions for this admin
+    await supabase
+      .from('admin_user_permissions')
+      .delete()
+      .eq('admin_id', adminId);
+
+    // Add new permissions if any provided
+    if (permissions.length > 0) {
+      // Get permission IDs
+      const { data: permissionData } = await supabase
+        .from('admin_permissions')
+        .select('permission_id, name')
+        .in('name', permissions);
+
+      if (permissionData && permissionData.length > 0) {
+        const permissionsToInsert = permissionData.map(p => ({
+          admin_id: parseInt(adminId),
+          permission_id: p.permission_id,
+        }));
+
+        await supabase
+          .from('admin_user_permissions')
+          .insert(permissionsToInsert);
+      }
+    }
+
+    res.json({ success: true, message: 'Admin permissions updated successfully' });
+  } catch (error) {
+    next(error);
+  }
+});
+
+// Remove admin access
+// Requires: manage_admins permission (SUPER_ADMIN only)
+router.delete('/admins/:adminId', requirePermission('manage_admins'), createAdminLogger(AdminAction.DELETE_ADMIN), async (req: AuthRequest, res, next) => {
+  try {
+    const { adminId } = req.params;
+
+    // Prevent admin from removing themselves
+    const { data: targetAdmin } = await supabase
+      .from('admin_users')
+      .select('user_id')
+      .eq('admin_id', adminId)
+      .single();
+
+    if (!targetAdmin) {
+      return res.status(404).json({ message: 'Admin not found' });
+    }
+
+    if (targetAdmin.user_id.toString() === req.user!.id) {
+      return res.status(400).json({ message: 'Cannot remove your own admin access' });
+    }
+
+    // Delete admin permissions
+    await supabase
+      .from('admin_user_permissions')
+      .delete()
+      .eq('admin_id', adminId);
+
+    // Delete admin user record
+    const { error: deleteError } = await supabase
+      .from('admin_users')
+      .delete()
+      .eq('admin_id', adminId);
+
+    if (deleteError) {
+      throw deleteError;
+    }
+
+    // Remove admin flag from users table
+    await supabase
+      .from('users')
+      .update({ is_admin: false })
+      .eq('user_id', targetAdmin.user_id);
+
+    res.json({ success: true, message: 'Admin access removed successfully' });
+  } catch (error) {
+    next(error);
+  }
+});
+
 export { router as adminRoutes };

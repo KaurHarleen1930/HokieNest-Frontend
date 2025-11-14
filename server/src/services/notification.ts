@@ -22,6 +22,9 @@ export interface NotificationPreferences {
   in_app_messages: boolean;
   in_app_connections: boolean;
   in_app_matches: boolean;
+  quiet_hours_start?: string; // Time in HH:MM:SS format
+  quiet_hours_end?: string;   // Time in HH:MM:SS format
+  enable_quiet_hours?: boolean;
 }
 
 export class NotificationService {
@@ -31,6 +34,31 @@ export class NotificationService {
   private static getFrontendUrl(): string {
     const url = process.env.FRONTEND_URL || 'http://localhost:8080';
     return url.replace(/\/+$/, ''); // Remove trailing slashes
+  }
+
+  /**
+   * Check if current time is within quiet hours
+   * Returns true if email should NOT be sent (during quiet hours)
+   * Returns false if email should be sent (outside quiet hours)
+   */
+  private static isWithinQuietHours(preferences: NotificationPreferences): boolean {
+    if (!preferences.enable_quiet_hours || !preferences.quiet_hours_start || !preferences.quiet_hours_end) {
+      return false; // Quiet hours not enabled, allow emails
+    }
+
+    const now = new Date();
+    const currentTime = now.toTimeString().split(' ')[0]; // Get HH:MM:SS format
+
+    const start = preferences.quiet_hours_start;
+    const end = preferences.quiet_hours_end;
+
+    // Handle case where quiet hours span midnight (e.g., 22:00 to 08:00)
+    if (start > end) {
+      return currentTime >= start || currentTime < end;
+    } else {
+      // Normal case (e.g., 08:00 to 17:00)
+      return currentTime >= start && currentTime < end;
+    }
   }
 
   /**
@@ -267,7 +295,10 @@ export class NotificationService {
         email_matches: true,
         in_app_messages: true,
         in_app_connections: true,
-        in_app_matches: true
+        in_app_matches: true,
+        quiet_hours_start: '22:00:00',
+        quiet_hours_end: '08:00:00',
+        enable_quiet_hours: false
       };
     }
 
@@ -324,8 +355,8 @@ export class NotificationService {
       );
     }
 
-    // Send email notification
-    if (preferences.email_connections) {
+    // Send email notification (check quiet hours first)
+    if (preferences.email_connections && !this.isWithinQuietHours(preferences)) {
       await this.sendConnectionRequestEmail(recipientId, requesterName, compatibilityScore);
     }
   }
@@ -354,8 +385,8 @@ export class NotificationService {
       );
     }
 
-    // Send email notification
-    if (preferences.email_messages) {
+    // Send email notification (check quiet hours first)
+    if (preferences.email_messages && !this.isWithinQuietHours(preferences)) {
       await this.sendMessageEmail(recipientId, senderName, messagePreview, conversationId);
     }
   }
@@ -382,8 +413,8 @@ export class NotificationService {
       );
     }
 
-    // Send email notification
-    if (preferences.email_connections) {
+    // Send email notification (check quiet hours first)
+    if (preferences.email_connections && !this.isWithinQuietHours(preferences)) {
       await this.sendConnectionAcceptedEmail(requesterId, acceptorName);
     }
   }
@@ -410,8 +441,8 @@ export class NotificationService {
       );
     }
 
-    // Send email notification
-    if (preferences.email_matches) {
+    // Send email notification (check quiet hours first)
+    if (preferences.email_matches && !this.isWithinQuietHours(preferences)) {
       await this.sendMatchFoundEmail(userId, matchName, compatibilityScore);
     }
   }

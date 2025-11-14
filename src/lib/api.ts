@@ -622,6 +622,43 @@ export const adminAPI = {
   getMyPermissions: (): Promise<{ adminRole: string | null; permissions: string[] }> => {
     return apiRequest('/admin/me/permissions');
   },
+
+  createAdmin: (data: {
+    userId: number | string;
+    role: 'SUPER_ADMIN' | 'CONTENT_ADMIN' | 'COMMUNITY_ADMIN';
+    permissions?: string[];
+  }): Promise<{ success: boolean; message: string; admin: AdminUser }> => {
+    return apiRequest('/admin/admins', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  },
+
+  updateAdminRole: (
+    adminId: number,
+    role: 'SUPER_ADMIN' | 'CONTENT_ADMIN' | 'COMMUNITY_ADMIN'
+  ): Promise<{ success: boolean; message: string }> => {
+    return apiRequest(`/admin/admins/${adminId}/role`, {
+      method: 'PUT',
+      body: JSON.stringify({ role }),
+    });
+  },
+
+  updateAdminPermissions: (
+    adminId: number,
+    permissions: string[]
+  ): Promise<{ success: boolean; message: string }> => {
+    return apiRequest(`/admin/admins/${adminId}/permissions`, {
+      method: 'PUT',
+      body: JSON.stringify({ permissions }),
+    });
+  },
+
+  removeAdmin: (adminId: number): Promise<{ success: boolean; message: string }> => {
+    return apiRequest(`/admin/admins/${adminId}`, {
+      method: 'DELETE',
+    });
+  },
 };
 
 

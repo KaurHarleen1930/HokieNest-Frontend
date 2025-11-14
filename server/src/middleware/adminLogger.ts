@@ -14,6 +14,9 @@ export enum AdminAction {
   VIEW_USERS = 'view_users',
   VIEW_LOGS = 'view_logs',
   UPDATE_USER = 'update_user',
+  CREATE_ADMIN = 'create_admin',
+  UPDATE_ADMIN = 'update_admin',
+  DELETE_ADMIN = 'delete_admin',
 }
 
 /**

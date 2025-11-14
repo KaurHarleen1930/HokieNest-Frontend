@@ -14,6 +14,7 @@ import { useToast } from "@/hooks/use-toast";
 import { AdminLogsTable } from "@/components/admin/AdminLogsTable";
 import { ReportsManagement } from "@/components/admin/ReportsManagement";
 import { AnalyticsDashboard } from "@/components/admin/AnalyticsDashboard";
+import { AdminManagement } from "@/components/admin/AdminManagement";
 import { PermissionGuard } from "@/components/PermissionGuard";
 
 export default function Admin() {
@@ -186,6 +187,7 @@ export default function Admin() {
   // Determine default tab based on permissions
   const getDefaultTab = () => {
     if (hasPermission('view_all_users')) return 'users';
+    if (hasPermission('manage_admins')) return 'admin-management';
     if (hasPermission('view_analytics')) return 'analytics';
     if (hasPermission('review_reports')) return 'reports';
     if (hasPermission('view_admin_logs')) return 'logs';
@@ -226,6 +228,13 @@ export default function Admin() {
               <TabsTrigger value="users">
                 <Users className="h-4 w-4 mr-2" />
                 User Management
+              </TabsTrigger>
+            </PermissionGuard>
+
+            <PermissionGuard permission="manage_admins">
+              <TabsTrigger value="admin-management">
+                <Shield className="h-4 w-4 mr-2" />
+                Admin Management
               </TabsTrigger>
             </PermissionGuard>
 
@@ -392,6 +401,12 @@ export default function Admin() {
                 </div>
               </CardContent>
             </Card>
+          </TabsContent>
+
+          <TabsContent value="admin-management" className="space-y-6">
+            <PermissionGuard permission="manage_admins">
+              <AdminManagement />
+            </PermissionGuard>
           </TabsContent>
 
           <TabsContent value="analytics" className="space-y-6">
