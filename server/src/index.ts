@@ -7,6 +7,8 @@ import passport from 'passport';
 import { authRoutes } from './routes/auth';
 import { listingRoutes } from './routes/listings';
 import { adminRoutes } from './routes/admin';
+import { reportsRoutes } from './routes/reports';
+import { analyticsRoutes } from './routes/analytics';
 import { preferencesRoutes } from './routes/preferences';
 import { roommatesRoutes } from './routes/roommates';
 import { priorityWeightsRoutes } from './routes/priority-weights';
@@ -60,6 +62,8 @@ app.get('/health', (req, res) => {
 app.use('/api/v1/auth', authRoutes);
 app.use('/api/v1/listings', listingRoutes);
 app.use('/api/v1/admin', adminRoutes);
+app.use('/api/v1/reports', reportsRoutes);
+app.use('/api/v1/analytics', analyticsRoutes);
 app.use('/api/v1/preferences', preferencesRoutes);
 app.use('/api/v1/roommates', roommatesRoutes);
 app.use('/api/v1/priority-weights', priorityWeightsRoutes);

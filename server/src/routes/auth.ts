@@ -42,6 +42,12 @@ passport.use(new GoogleStrategy({
     }
 
     if (existingUser) {
+      // Check if user is suspended
+      if (existingUser.suspended) {
+        console.log('Google OAuth strategy - user is suspended:', email);
+        return done(null, false);
+      }
+
       // User exists, return them with the expected format
       console.log('Google OAuth strategy - existing user found:', existingUser);
       const user = {
@@ -104,11 +110,16 @@ passport.deserializeUser(async (id: string, done) => {
   try {
     const { data: user } = await supabase
       .from('users')
-      .select('user_id, email, first_name, last_name, is_admin')
+      .select('user_id, email, first_name, last_name, is_admin, suspended')
       .eq('user_id', id)
       .single();
 
     if (user) {
+      // Check if user is suspended
+      if (user.suspended) {
+        return done(null, false);
+      }
+
       const formattedUser = {
         id: user.user_id.toString(),
         email: user.email,
@@ -252,6 +263,13 @@ router.post('/login', async (req, res, next) => {
       });
     }
 
+    // Check if user is suspended
+    if (user.suspended) {
+      return res.status(403).json({
+        message: 'Your account has been suspended. Please contact support for more information.'
+      });
+    }
+
     // Check password
     const isPasswordValid = await bcrypt.compare(password, user.password_hash);
     if (!isPasswordValid) {
@@ -390,7 +408,7 @@ router.get('/google', passport.authenticate('google', {
 }));
 
 router.get('/google/callback',
-  passport.authenticate('google', { session: false, failureRedirect: '/api/v1/auth/google/error' }),
+  passport.authenticate('google', { session: false, failureRedirect: '/api/v1/auth/google/error?error=account_suspended' }),
   async (req: any, res) => {
     try {
       console.log('Google OAuth callback - req.user:', req.user);
@@ -398,7 +416,7 @@ router.get('/google/callback',
 
       if (!user) {
         console.error('No user in request after Google OAuth');
-        return res.redirect(`${process.env.FRONTEND_URL || 'http://localhost:5174'}/login?error=no_user`);
+        return res.redirect(`${process.env.FRONTEND_URL || 'http://localhost:5174'}/login?error=account_suspended_or_invalid`);
       }
 
       // Generate JWT token
@@ -448,7 +466,9 @@ router.get('/google/callback',
 router.get('/google/error', (req, res) => {
   const rawFrontendUrl = process.env.FRONTEND_URL || 'http://localhost:5174';
   const frontendUrl = rawFrontendUrl.replace(/\/$/, '');
-  res.redirect(`${frontendUrl}/login?error=vt_email_required`);
+  // Check if account is suspended (this will be the case if OAuth returned false)
+  const error = req.query.error || 'vt_email_required';
+  res.redirect(`${frontendUrl}/login?error=${error}`);
 });
 
 // Logout route (with optional auth for better UX)

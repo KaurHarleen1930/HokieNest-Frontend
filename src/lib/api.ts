@@ -417,6 +417,213 @@ export const usersAPI = {
   },
 };
 
+// Reports API (Community Admin)
+export interface Report {
+  id: string;
+  reporter_id: number;
+  reported_user_id?: number;
+  reported_property_id?: string;
+  reported_review_id?: string;
+  report_type: string;
+  description: string;
+  status: 'pending' | 'resolved' | 'dismissed';
+  reviewed_by?: number;
+  reviewed_at?: string;
+  resolution_notes?: string;
+  created_at: string;
+}
+
+export interface FlaggedPost {
+  id: string;
+  post_id: string;
+  user_id: number;
+  reason: string;
+  resolved: boolean;
+  created_at: string;
+  post?: any;
+  user?: any;
+}
+
+export interface ReportStats {
+  reports: {
+    total: number;
+    pending: number;
+    resolved: number;
+    dismissed: number;
+  };
+  flaggedPosts: {
+    total: number;
+    pending: number;
+    resolved: number;
+  };
+}
+
+export const reportsAPI = {
+  getAll: (params?: {
+    status?: string;
+    type?: string;
+    page?: number;
+    limit?: number;
+  }): Promise<{ reports: Report[]; pagination: any }> => {
+    const queryParams = new URLSearchParams();
+    if (params?.status) queryParams.append('status', params.status);
+    if (params?.type) queryParams.append('type', params.type);
+    if (params?.page) queryParams.append('page', params.page.toString());
+    if (params?.limit) queryParams.append('limit', params.limit.toString());
+
+    const url = `/reports${queryParams.toString() ? `?${queryParams.toString()}` : ''}`;
+    return apiRequest(url);
+  },
+
+  getFlaggedPosts: (params?: {
+    resolved?: boolean;
+    page?: number;
+    limit?: number;
+  }): Promise<FlaggedPost[]> => {
+    const queryParams = new URLSearchParams();
+    if (params?.resolved !== undefined) queryParams.append('resolved', params.resolved.toString());
+    if (params?.page) queryParams.append('page', params.page.toString());
+    if (params?.limit) queryParams.append('limit', params.limit.toString());
+
+    const url = `/reports/flagged-posts${queryParams.toString() ? `?${queryParams.toString()}` : ''}`;
+    return apiRequest(url);
+  },
+
+  resolve: (reportId: string, data: {
+    resolution_notes?: string;
+    action?: 'suspend_user' | 'delete_content';
+  }): Promise<{ success: boolean; message: string }> => {
+    return apiRequest(`/reports/${reportId}/resolve`, {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    });
+  },
+
+  dismiss: (reportId: string, resolution_notes?: string): Promise<{ success: boolean; message: string }> => {
+    return apiRequest(`/reports/${reportId}/dismiss`, {
+      method: 'PUT',
+      body: JSON.stringify({ resolution_notes }),
+    });
+  },
+
+  resolveFlaggedPost: (flagId: string, action?: 'delete_post'): Promise<{ success: boolean; message: string }> => {
+    return apiRequest(`/reports/flagged-posts/${flagId}/resolve`, {
+      method: 'PUT',
+      body: JSON.stringify({ action }),
+    });
+  },
+
+  getStats: (): Promise<ReportStats> => {
+    return apiRequest('/reports/stats');
+  },
+};
+
+// Analytics API (Content Admin)
+export interface AnalyticsOverview {
+  users: {
+    total: number;
+    new: number;
+  };
+  listings: {
+    properties: number;
+    rooms: number;
+    total: number;
+  };
+  engagement: {
+    messages: number;
+    connections: number;
+    reviews: number;
+    favorites: number;
+  };
+}
+
+export interface GrowthData {
+  date: string;
+  signups: number;
+}
+
+export interface ListingAnalytics {
+  propertyTypes: Record<string, { active: number; inactive: number }>;
+  roomTypes: Record<string, { active: number; inactive: number }>;
+  topFavorited: Array<{ property: any; favorites: number }>;
+}
+
+export interface EngagementMetrics {
+  messages: Record<string, number>;
+  connections: Record<string, number>;
+  reviews: Record<string, number>;
+  metrics: {
+    totalMessages: number;
+    totalConnections: number;
+    acceptedConnections: number;
+    acceptanceRate: number;
+    totalReviews: number;
+  };
+}
+
+export const analyticsAPI = {
+  getOverview: (params?: {
+    startDate?: string;
+    endDate?: string;
+  }): Promise<AnalyticsOverview> => {
+    const queryParams = new URLSearchParams();
+    if (params?.startDate) queryParams.append('startDate', params.startDate);
+    if (params?.endDate) queryParams.append('endDate', params.endDate);
+
+    const url = `/analytics/overview${queryParams.toString() ? `?${queryParams.toString()}` : ''}`;
+    return apiRequest(url);
+  },
+
+  getUserGrowth: (period: '7d' | '30d' | '90d' | '1y' = '30d'): Promise<GrowthData[]> => {
+    return apiRequest(`/analytics/users/growth?period=${period}`);
+  },
+
+  getListingAnalytics: (): Promise<ListingAnalytics> => {
+    return apiRequest('/analytics/listings');
+  },
+
+  getEngagement: (period: '7d' | '30d' | '90d' = '30d'): Promise<EngagementMetrics> => {
+    return apiRequest(`/analytics/engagement?period=${period}`);
+  },
+
+  getTopUsers: (): Promise<{ topMessageUsers: Array<{ user: any; messageCount: number }> }> => {
+    return apiRequest('/analytics/users/top');
+  },
+};
+
+// Admin Management API (Super Admin)
+export interface AdminUser {
+  admin_id: number;
+  user_id: number;
+  email: string;
+  first_name: string;
+  last_name: string;
+  role: 'SUPER_ADMIN' | 'CONTENT_ADMIN' | 'COMMUNITY_ADMIN';
+  is_active: boolean;
+  created_at: string;
+  permissions: string[];
+}
+
+export interface Permission {
+  permission_id: number;
+  name: string;
+  description: string | null;
+}
+
+export const adminAPI = {
+  getAllAdmins: (): Promise<AdminUser[]> => {
+    return apiRequest('/admin/admins');
+  },
+
+  getAllPermissions: (): Promise<Permission[]> => {
+    return apiRequest('/admin/permissions');
+  },
+
+  getMyPermissions: (): Promise<{ adminRole: string | null; permissions: string[] }> => {
+    return apiRequest('/admin/me/permissions');
+  },
+};
+
 
 
 

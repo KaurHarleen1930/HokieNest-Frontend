@@ -1,16 +1,18 @@
 import { Router } from 'express';
 import { supabase } from '../lib/supabase';
-import { authenticateToken, requireAdmin, AuthRequest } from '../middleware/auth';
+import { authenticateToken, requireAdmin, requirePermission, AuthRequest } from '../middleware/auth';
 import { createAdminLogger, AdminAction, getAdminLogs } from '../middleware/adminLogger';
+import { getAllAdmins, getAllPermissions } from '../services/adminService';
 
 const router = Router();
 
 // Apply auth middleware to all admin routes
 router.use(authenticateToken);
-router.use(requireAdmin);
+// Note: We no longer use blanket requireAdmin - each route has specific permission checks
 
 // Get all users with optional search
-router.get('/users', createAdminLogger(AdminAction.VIEW_USERS), async (req: AuthRequest, res, next) => {
+// Requires: view_all_users permission (COMMUNITY_ADMIN, SUPER_ADMIN)
+router.get('/users', requirePermission('view_all_users'), createAdminLogger(AdminAction.VIEW_USERS), async (req: AuthRequest, res, next) => {
   try {
     const { search } = req.query;
 
@@ -47,7 +49,8 @@ router.get('/users', createAdminLogger(AdminAction.VIEW_USERS), async (req: Auth
 });
 
 // Suspend user
-router.post('/users/:id/suspend', createAdminLogger(AdminAction.SUSPEND_USER), async (req: AuthRequest, res, next) => {
+// Requires: suspend_users permission (COMMUNITY_ADMIN, SUPER_ADMIN)
+router.post('/users/:id/suspend', requirePermission('suspend_users'), createAdminLogger(AdminAction.SUSPEND_USER), async (req: AuthRequest, res, next) => {
   try {
     const { id } = req.params;
 
@@ -93,7 +96,8 @@ router.post('/users/:id/suspend', createAdminLogger(AdminAction.SUSPEND_USER), a
 });
 
 // Unsuspend user
-router.post('/users/:id/unsuspend', createAdminLogger(AdminAction.UNSUSPEND_USER), async (req: AuthRequest, res, next) => {
+// Requires: suspend_users permission (COMMUNITY_ADMIN, SUPER_ADMIN)
+router.post('/users/:id/unsuspend', requirePermission('suspend_users'), createAdminLogger(AdminAction.UNSUSPEND_USER), async (req: AuthRequest, res, next) => {
   try {
     const { id } = req.params;
 
@@ -129,7 +133,8 @@ router.post('/users/:id/unsuspend', createAdminLogger(AdminAction.UNSUSPEND_USER
 });
 
 // Delete user (soft delete by marking as deleted)
-router.delete('/users/:id', createAdminLogger(AdminAction.DELETE_USER), async (req: AuthRequest, res, next) => {
+// Requires: suspend_users permission (COMMUNITY_ADMIN, SUPER_ADMIN) - delete requires same as suspend
+router.delete('/users/:id', requirePermission('suspend_users'), createAdminLogger(AdminAction.DELETE_USER), async (req: AuthRequest, res, next) => {
   try {
     const { id } = req.params;
 
@@ -178,7 +183,8 @@ router.delete('/users/:id', createAdminLogger(AdminAction.DELETE_USER), async (r
 });
 
 // Get admin activity logs
-router.get('/logs', createAdminLogger(AdminAction.VIEW_LOGS), async (req: AuthRequest, res, next) => {
+// Requires: view_admin_logs permission (SUPER_ADMIN only)
+router.get('/logs', requirePermission('view_admin_logs'), createAdminLogger(AdminAction.VIEW_LOGS), async (req: AuthRequest, res, next) => {
   try {
     const page = parseInt(req.query.page as string) || 1;
     const limit = parseInt(req.query.limit as string) || 50;
@@ -197,6 +203,41 @@ router.get('/logs', createAdminLogger(AdminAction.VIEW_LOGS), async (req: AuthRe
     });
 
     res.json(result);
+  } catch (error) {
+    next(error);
+  }
+});
+
+// Get all admin users with their permissions
+// Requires: manage_admins permission (SUPER_ADMIN only)
+router.get('/admins', requirePermission('manage_admins'), async (req: AuthRequest, res, next) => {
+  try {
+    const admins = await getAllAdmins(parseInt(req.user!.id));
+    res.json(admins);
+  } catch (error) {
+    next(error);
+  }
+});
+
+// Get all available permissions
+// Requires: manage_admins permission (SUPER_ADMIN only)
+router.get('/permissions', requirePermission('manage_admins'), async (req: AuthRequest, res, next) => {
+  try {
+    const permissions = await getAllPermissions();
+    res.json(permissions);
+  } catch (error) {
+    next(error);
+  }
+});
+
+// Get current admin's permissions
+// Any authenticated admin can view their own permissions
+router.get('/me/permissions', requireAdmin, async (req: AuthRequest, res, next) => {
+  try {
+    res.json({
+      adminRole: req.user?.adminRole || null,
+      permissions: req.user?.permissions || [],
+    });
   } catch (error) {
     next(error);
   }

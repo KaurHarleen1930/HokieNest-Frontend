@@ -1,10 +1,14 @@
 import { createContext, useContext, useEffect, useState, ReactNode } from 'react';
 
+export type AdminRole = 'SUPER_ADMIN' | 'CONTENT_ADMIN' | 'COMMUNITY_ADMIN';
+
 export interface User {
   id: string;
   email: string;
   name: string;
   role: 'student' | 'staff' | 'admin';
+  adminRole?: AdminRole;
+  permissions?: string[];
 }
 
 interface AuthContextType {
@@ -16,6 +20,9 @@ interface AuthContextType {
   signup: (email: string, password: string, name: string) => Promise<any>;
   loading: boolean;
   isAuthenticated: boolean;
+  hasPermission: (permission: string) => boolean;
+  hasAnyPermission: (permissions: string[]) => boolean;
+  refreshPermissions: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -186,6 +193,66 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   };
 
+  /**
+   * Check if the current user has a specific permission
+   */
+  const hasPermission = (permission: string): boolean => {
+    if (!user || user.role !== 'admin') {
+      return false;
+    }
+
+    // SUPER_ADMIN with all_permissions gets everything
+    if (user.permissions?.includes('all_permissions')) {
+      return true;
+    }
+
+    return user.permissions?.includes(permission) || false;
+  };
+
+  /**
+   * Check if the current user has ANY of the specified permissions
+   */
+  const hasAnyPermission = (permissions: string[]): boolean => {
+    if (!user || user.role !== 'admin') {
+      return false;
+    }
+
+    // SUPER_ADMIN with all_permissions gets everything
+    if (user.permissions?.includes('all_permissions')) {
+      return true;
+    }
+
+    return permissions.some(permission => user.permissions?.includes(permission));
+  };
+
+  /**
+   * Refresh the current user's permissions from the server
+   */
+  const refreshPermissions = async (): Promise<void> => {
+    if (!token || !user || user.role !== 'admin') {
+      return;
+    }
+
+    try {
+      const response = await fetch(`${API_BASE_URL}/admin/me/permissions`, {
+        headers: {
+          'Authorization': `Bearer ${token}`,
+        },
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        setUser({
+          ...user,
+          adminRole: data.adminRole,
+          permissions: data.permissions,
+        });
+      }
+    } catch (error) {
+      console.error('Failed to refresh permissions:', error);
+    }
+  };
+
   return (
     <AuthContext.Provider value={{
       user,
@@ -196,6 +263,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       signup,
       loading,
       isAuthenticated,
+      hasPermission,
+      hasAnyPermission,
+      refreshPermissions,
     }}>
       {children}
     </AuthContext.Provider>

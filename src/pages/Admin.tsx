@@ -7,21 +7,14 @@ import { Alert, AlertDescription } from "@/components/ui/alert";
 import { ErrorState } from "@/components/ui/error-state";
 import { Input } from "@/components/ui/input";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from "@/components/ui/alert-dialog";
 import { usersAPI, User } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
-import { Shield, Users, UserX, AlertTriangle, Search, Trash2, UserCheck, FileText } from "lucide-react";
+import { Shield, Users, UserX, AlertTriangle, Search, UserCheck, FileText, BarChart3, Flag } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { AdminLogsTable } from "@/components/admin/AdminLogsTable";
+import { ReportsManagement } from "@/components/admin/ReportsManagement";
+import { AnalyticsDashboard } from "@/components/admin/AnalyticsDashboard";
+import { PermissionGuard } from "@/components/PermissionGuard";
 
 export default function Admin() {
   const [users, setUsers] = useState<User[]>([]);
@@ -29,18 +22,16 @@ export default function Admin() {
   const [error, setError] = useState<string | null>(null);
   const [suspendingUsers, setSuspendingUsers] = useState<Set<string>>(new Set());
   const [unsuspendingUsers, setUnsuspendingUsers] = useState<Set<string>>(new Set());
-  const [deletingUsers, setDeletingUsers] = useState<Set<string>>(new Set());
   const [searchQuery, setSearchQuery] = useState("");
-  const [userToDelete, setUserToDelete] = useState<string | null>(null);
 
-  const { user: currentUser } = useAuth();
+  const { user: currentUser, hasPermission, hasAnyPermission } = useAuth();
   const { toast } = useToast();
 
-  const fetchUsers = async (search?: string) => {
+  const fetchUsers = async () => {
     try {
       setLoading(true);
       setError(null);
-      const data = await usersAPI.getAll(search);
+      const data = await usersAPI.getAll();
       setUsers(data);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to fetch users");
@@ -50,8 +41,24 @@ export default function Admin() {
   };
 
   useEffect(() => {
-    fetchUsers();
-  }, []);
+    // Only fetch users if the current admin has permission
+    if (hasPermission('view_all_users')) {
+      fetchUsers();
+    } else {
+      // If no permission, just stop loading
+      setLoading(false);
+    }
+  }, [hasPermission]);
+
+  // Client-side filtering
+  const filteredUsers = users.filter(user => {
+    if (!searchQuery.trim()) return true;
+    const query = searchQuery.toLowerCase();
+    return (
+      user.name.toLowerCase().includes(query) ||
+      user.email.toLowerCase().includes(query)
+    );
+  });
 
   const handleSuspendUser = async (userId: string) => {
     if (userId === currentUser?.id) {
@@ -120,47 +127,9 @@ export default function Admin() {
     }
   };
 
-  const handleDeleteUser = async () => {
-    if (!userToDelete) return;
 
-    try {
-      setDeletingUsers(prev => new Set(prev).add(userToDelete));
-      await usersAPI.deleteUser(userToDelete);
-
-      // Remove from local state
-      setUsers(prev => prev.filter(user => user.id !== userToDelete));
-
-      toast({
-        title: "User deleted",
-        description: "The user has been permanently deleted.",
-      });
-    } catch (err) {
-      toast({
-        title: "Deletion failed",
-        description: err instanceof Error ? err.message : "Failed to delete user",
-        variant: "destructive",
-      });
-    } finally {
-      setDeletingUsers(prev => {
-        const newSet = new Set(prev);
-        newSet.delete(userToDelete);
-        return newSet;
-      });
-      setUserToDelete(null);
-    }
-  };
-
-  const handleSearch = (value: string) => {
-    setSearchQuery(value);
-    if (value.trim()) {
-      fetchUsers(value);
-    } else {
-      fetchUsers();
-    }
-  };
-
-  // Check if current user is admin
-  if (currentUser?.role !== 'admin') {
+  // Check if current user is admin (either has admin role OR has adminRole/permissions)
+  if (currentUser?.role !== 'admin' && !currentUser?.adminRole) {
     return (
       <div className="min-h-screen bg-background">
         <div className="container mx-auto px-4 py-8">
@@ -174,7 +143,9 @@ export default function Admin() {
     );
   }
 
-  if (loading) {
+  // Only show loading/error states if user has permission to view users
+  // Otherwise, let them access other tabs they have permission for
+  if (loading && hasPermission('view_all_users')) {
     return (
       <div className="min-h-screen bg-background">
         <div className="container mx-auto px-4 py-8">
@@ -187,7 +158,7 @@ export default function Admin() {
     );
   }
 
-  if (error) {
+  if (error && hasPermission('view_all_users')) {
     return (
       <div className="min-h-screen bg-background">
         <div className="container mx-auto px-4 py-8">
@@ -209,31 +180,75 @@ export default function Admin() {
     }
   };
 
-  const activeUsers = users.filter(user => !user.suspended);
-  const suspendedUsers = users.filter(user => user.suspended);
+  const activeUsers = filteredUsers.filter(user => !user.suspended);
+  const suspendedUsers = filteredUsers.filter(user => user.suspended);
+
+  // Determine default tab based on permissions
+  const getDefaultTab = () => {
+    if (hasPermission('view_all_users')) return 'users';
+    if (hasPermission('view_analytics')) return 'analytics';
+    if (hasPermission('review_reports')) return 'reports';
+    if (hasPermission('view_admin_logs')) return 'logs';
+    return 'users'; // Fallback
+  };
 
   return (
     <div className="min-h-screen bg-background">
       <div className="container mx-auto px-4 py-8">
         {/* Header */}
         <div className="mb-8">
-          <div className="flex items-center gap-3 mb-4">
-            <Shield className="h-8 w-8 text-accent" />
-            <h1 className="text-3xl font-bold text-foreground">Admin Panel</h1>
+          <div className="flex items-center justify-between mb-4">
+            <div className="flex items-center gap-3">
+              <Shield className="h-8 w-8 text-accent" />
+              <h1 className="text-3xl font-bold text-foreground">Admin Panel</h1>
+            </div>
+            {currentUser?.adminRole && (
+              <Badge
+                variant={
+                  currentUser.adminRole === 'SUPER_ADMIN'
+                    ? 'destructive'
+                    : currentUser.adminRole === 'CONTENT_ADMIN'
+                    ? 'default'
+                    : 'accent'
+                }
+                className="text-sm px-3 py-1"
+              >
+                {currentUser.adminRole.replace('_', ' ')}
+              </Badge>
+            )}
           </div>
           <p className="text-muted">Manage users and platform settings</p>
         </div>
 
-        <Tabs defaultValue="users" className="space-y-6">
+        <Tabs defaultValue={getDefaultTab()} className="space-y-6">
           <TabsList>
-            <TabsTrigger value="users">
-              <Users className="h-4 w-4 mr-2" />
-              User Management
-            </TabsTrigger>
-            <TabsTrigger value="logs">
-              <FileText className="h-4 w-4 mr-2" />
-              Admin Logs
-            </TabsTrigger>
+            <PermissionGuard permission="view_all_users">
+              <TabsTrigger value="users">
+                <Users className="h-4 w-4 mr-2" />
+                User Management
+              </TabsTrigger>
+            </PermissionGuard>
+
+            <PermissionGuard permission="view_analytics">
+              <TabsTrigger value="analytics">
+                <BarChart3 className="h-4 w-4 mr-2" />
+                Analytics
+              </TabsTrigger>
+            </PermissionGuard>
+
+            <PermissionGuard permission="review_reports">
+              <TabsTrigger value="reports">
+                <Flag className="h-4 w-4 mr-2" />
+                Reports
+              </TabsTrigger>
+            </PermissionGuard>
+
+            <PermissionGuard permission="view_admin_logs">
+              <TabsTrigger value="logs">
+                <FileText className="h-4 w-4 mr-2" />
+                Admin Logs
+              </TabsTrigger>
+            </PermissionGuard>
           </TabsList>
 
           <TabsContent value="users" className="space-y-6">
@@ -300,7 +315,7 @@ export default function Admin() {
                     <Input
                       placeholder="Search users by name or email..."
                       value={searchQuery}
-                      onChange={(e) => handleSearch(e.target.value)}
+                      onChange={(e) => setSearchQuery(e.target.value)}
                       className="pl-10"
                     />
                   </div>
@@ -318,7 +333,7 @@ export default function Admin() {
                       </TableRow>
                     </TableHeader>
                     <TableBody>
-                      {users.map((user) => (
+                      {filteredUsers.map((user) => (
                         <TableRow key={user.id}>
                           <TableCell className="font-medium text-foreground">
                             {user.name}
@@ -366,15 +381,6 @@ export default function Admin() {
                                       {suspendingUsers.has(user.id) ? "Suspending..." : "Suspend"}
                                     </Button>
                                   )}
-                                  <Button
-                                    variant="destructive"
-                                    size="sm"
-                                    onClick={() => setUserToDelete(user.id)}
-                                    disabled={deletingUsers.has(user.id)}
-                                  >
-                                    <Trash2 className="h-4 w-4 mr-1" />
-                                    Delete
-                                  </Button>
                                 </>
                               ) : null}
                             </div>
@@ -388,32 +394,24 @@ export default function Admin() {
             </Card>
           </TabsContent>
 
+          <TabsContent value="analytics" className="space-y-6">
+            <PermissionGuard permission="view_analytics">
+              <AnalyticsDashboard />
+            </PermissionGuard>
+          </TabsContent>
+
+          <TabsContent value="reports" className="space-y-6">
+            <PermissionGuard permission="review_reports">
+              <ReportsManagement />
+            </PermissionGuard>
+          </TabsContent>
+
           <TabsContent value="logs" className="space-y-6">
-            <AdminLogsTable />
+            <PermissionGuard permission="view_admin_logs">
+              <AdminLogsTable />
+            </PermissionGuard>
           </TabsContent>
         </Tabs>
-
-        {/* Delete Confirmation Dialog */}
-        <AlertDialog open={!!userToDelete} onOpenChange={() => setUserToDelete(null)}>
-          <AlertDialogContent>
-            <AlertDialogHeader>
-              <AlertDialogTitle>Are you absolutely sure?</AlertDialogTitle>
-              <AlertDialogDescription>
-                This action cannot be undone. This will permanently delete the user account
-                and remove all associated data from our servers.
-              </AlertDialogDescription>
-            </AlertDialogHeader>
-            <AlertDialogFooter>
-              <AlertDialogCancel>Cancel</AlertDialogCancel>
-              <AlertDialogAction
-                onClick={handleDeleteUser}
-                className="bg-destructive hover:bg-destructive/90"
-              >
-                Delete User
-              </AlertDialogAction>
-            </AlertDialogFooter>
-          </AlertDialogContent>
-        </AlertDialog>
       </div>
     </div>
   );
