@@ -1,0 +1,42 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: hokienest-frontend
+  namespace: hnest-dev
+  labels:
+    app: hokienest-frontend
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: hokienest-frontend
+  template:
+    metadata:
+      labels:
+        app: hokienest-frontend
+    spec:
+      containers:
+      - name: frontend
+        image: kaurharleenvt/hokienest-frontend:latest
+        ports:
+        - containerPort: 80
+          name: http
+        resources:
+          requests:
+            memory: "128Mi"
+            cpu: "100m"
+          limits:
+            memory: "256Mi"
+            cpu: "200m"
+        livenessProbe:
+          httpGet:
+            path: /
+            port: 80
+          initialDelaySeconds: 10
+          periodSeconds: 10
+        readinessProbe:
+          httpGet:
+            path: /
+            port: 80
+          initialDelaySeconds: 5
+          periodSeconds: 5

@@ -1,0 +1,37 @@
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: hokienest-backend
+  namespace: hnest-dev
+  labels:
+    app: hokienest-backend
+spec:
+  type: ClusterIP
+  selector:
+    app: hokienest-backend
+  ports:
+  - port: 4000
+    targetPort: 4000
+    protocol: TCP
+    name: http
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: hokienest-frontend
+  namespace: hnest-dev
+  labels:
+    app: hokienest-frontend
+spec:
+  type: ClusterIP
+  selector:
+    app: hokienest-frontend
+  ports:
+  - port: 80
+    targetPort: 80
+    protocol: TCP
+    name: http
+  
+---
