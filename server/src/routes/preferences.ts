@@ -27,7 +27,7 @@ const userProfileSchema = z.object({
 const housingPreferencesSchema = z.object({
   budget_min: z.number().int().min(0),
   budget_max: z.number().int().min(0),
-  move_in_date: z.string().min(1, 'Move-in date is required'),
+  move_in_date: z.string().optional().or(z.literal('')).default(''),
   move_out_date: z.string().optional().or(z.literal('')).or(z.null()),
   lease_length: z.array(z.string()).optional().default([]),
   max_distance: z.string().optional().default(''),
@@ -136,7 +136,7 @@ router.post('/housing', authenticateToken as any, async (req: any, res: Response
         .update({
           budget_min: validatedData.budget_min,
           budget_max: validatedData.budget_max,
-          move_in_date: validatedData.move_in_date,
+          move_in_date: validatedData.move_in_date || null,
           move_out_date: validatedData.move_out_date || null,
           lease_length: validatedData.lease_length,
           max_distance: validatedData.max_distance,
@@ -157,7 +157,7 @@ router.post('/housing', authenticateToken as any, async (req: any, res: Response
           user_id: userId,
           budget_min: validatedData.budget_min,
           budget_max: validatedData.budget_max,
-          move_in_date: validatedData.move_in_date,
+          move_in_date: validatedData.move_in_date || null,
           move_out_date: validatedData.move_out_date || null,
           lease_length: validatedData.lease_length,
           max_distance: validatedData.max_distance,
