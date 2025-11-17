@@ -2,6 +2,8 @@ import { Button } from "@/components/ui/button";
 import { useNavigate } from "react-router-dom";
 import { Search, Home as HomeIcon, Users, Shield, Plus } from "lucide-react";
 import { useAuth } from "@/lib/auth";
+import Footer from "@/components/Footer";
+
 
 export default function Home() {
   const navigate = useNavigate();
@@ -140,6 +142,32 @@ export default function Home() {
           </div>
         </div>
       </section>
+      {/* Hokie Community Board Section */}
+<section className="py-20 bg-surface border-t border-border">
+  <div className="container mx-auto px-4 text-center">
+    <div className="max-w-3xl mx-auto mb-8">
+      <h2 className="text-3xl font-bold text-primary mb-4">
+        Hokie Community Board
+      </h2>
+      <p className="text-muted text-lg leading-relaxed">
+        Connect with fellow Hokies through our student-powered community board.
+        Share garbage sale items, shift shop deals, safety alerts, local tips, 
+        lost & found posts, or anything that helps Virginia Tech students settle 
+        into the community.
+      </p>
+    </div>
+
+    <Button
+      size="lg"
+      variant="accent"
+      className="gap-2"
+      onClick={() => navigate("/community")}
+    >
+      <Users className="h-5 w-5" />
+      Visit Community Board
+    </Button>
+  </div>
+</section>
 
       {/* Post Listing CTA Section */}
       {isAuthenticated && (
@@ -201,6 +229,8 @@ export default function Home() {
           </div>
         </div>
       </section>
+      {/* Add Footer HERE */}
+      <Footer />
     </div>
   );
 }

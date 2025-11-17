@@ -35,6 +35,7 @@ import PostListing from "./pages/PostListing";
 import VTCommunity from "./pages/VTCommunity";
 import CommunityPage from "@/pages/CommunityPage";
 import { supabase } from "@/lib/supabase";
+import TermsPage from "./pages/TermsPage";
 
 supabase.auth.getSession().then(({ data }) => {
   console.log("🔑 Restored session:", data.session);
@@ -124,6 +125,9 @@ const App = () => (
                   <Conversation />
                 </ProtectedRoute>
               } />
+
+              <Route path="/terms" element={<TermsPage />} />
+
               {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
               <Route path="*" element={<NotFound />} />
                 </Routes>
