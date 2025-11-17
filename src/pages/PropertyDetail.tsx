@@ -30,6 +30,7 @@ import { fetchNearbyAttractions } from "@/services/attractionsService";
 import { fetchNearbyTransit } from "@/services/transitService"; // <-- IMPORT TRANSIT
 import type { Attraction } from "@/services/attractionsService";
 import type { TransitStation } from "@/services/transitService"; // <-- IMPORT TRANSIT TYPE
+import Footer from "@/components/Footer";
 // -----------------------
 
 // Helper to parse JSON fields
@@ -699,6 +700,7 @@ export default function PropertyDetail() {
           </div>
         </div>
       </div>
+       <Footer />
     </div>
   );
 }

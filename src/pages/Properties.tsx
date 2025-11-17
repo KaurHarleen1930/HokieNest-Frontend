@@ -33,6 +33,7 @@ import { useAuth } from "@/lib/auth";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import PriceRange from "@/components/ui/PriceRange";
 import { supabase } from "@/lib/supabase";
+import Footer from "@/components/Footer";
 
 interface Filters {
   minPrice: string;
@@ -1041,6 +1042,7 @@ export default function Properties() {
           </div>
         </div>
       </div>
+       <Footer />
     </div>
   );
 }
