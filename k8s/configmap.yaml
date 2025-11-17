@@ -1,0 +1,11 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: hokienest-config
+  namespace: hnest-dev
+data:
+  NODE_ENV: "production"
+  PORT: "4000"
+  VITE_API_URL: "https://hokienest.discovery.cs.vt.edu/api/v1"
+  VITE_SUPABASE_URL: "https://kkovulaiizedftualqss.supabase.co"
+  VITE_SUPABASE_ANON_KEY: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imtrb3Z1bGFpaXplZGZ0dWFscXNzIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTg3NDk4OTEsImV4cCI6MjA3NDMyNTg5MX0.oVL_vflscmhP23iLJhjtJ9NHz6jeA1cljYjtjOCX7Ag"

@@ -86,8 +86,10 @@ const Profile = () => {
   const fetchProfileData = async () => {
     try {
       const token = localStorage.getItem("auth_token");
+      const API_BASE_URL = `${import.meta.env.VITE_API_URL ?? 'http://localhost:4000'}/api/v1`;
       const response = await fetch(
-        "http://localhost:4000/api/v1/preferences/profile",
+        
+        `${API_BASE_URL}/preferences/profile`,
         {
           headers: {
             Authorization: `Bearer ${token}`,
@@ -123,8 +125,10 @@ const Profile = () => {
   const fetchHousingPriorities = async () => {
     try {
       const token = localStorage.getItem("auth_token");
+      const API_BASE_URL = `${import.meta.env.VITE_API_URL ?? 'http://localhost:4000'}/api/v1`;
+
       const response = await fetch(
-        "http://localhost:4000/api/v1/preferences/housing-priorities",
+        `${API_BASE_URL}/preferences/housing-priorities`,
         {
           headers: {
             Authorization: `Bearer ${token}`,
@@ -154,8 +158,10 @@ const Profile = () => {
     try {
       setIsLoading(true);
       const token = localStorage.getItem("auth_token");
+      const API_BASE_URL = `${import.meta.env.VITE_API_URL ?? 'http://localhost:4000'}/api/v1`;
+
       const response = await fetch(
-        "http://localhost:4000/api/v1/preferences/profile",
+        `${API_BASE_URL}/preferences/profile`,
         {
           method: "PUT",
           headers: {
@@ -195,8 +201,10 @@ const Profile = () => {
     try {
       setIsLoading(true);
       const token = localStorage.getItem("auth_token");
+      const API_BASE_URL = `${import.meta.env.VITE_API_URL ?? 'http://localhost:4000'}/api/v1`;
+
       const response = await fetch(
-        "http://localhost:4000/api/v1/preferences/housing-priorities",
+        `${API_BASE_URL}/preferences/housing-priorities`,
         {
           method: "POST",
           headers: {
@@ -402,8 +410,10 @@ const Profile = () => {
     try {
       setIsLoading(true);
       const token = localStorage.getItem("auth_token");
+      const API_BASE_URL = `${import.meta.env.VITE_API_URL ?? 'http://localhost:4000'}/api/v1`;
+
       const response = await fetch(
-        "http://localhost:4000/api/v1/auth/delete-account",
+        `${API_BASE_URL}/auth/delete-account`,
         {
           method: "DELETE",
           headers: {

@@ -110,8 +110,10 @@ export default function PriorityDashboard() {
 
     const fetchUserPriorities = async () => {
         try {
-            const token = localStorage.getItem('auth_token');
-            const response = await fetch('http://localhost:4000/api/v1/preferences/housing-priorities', {
+            const token = localStorage.getItem('auth_token');            
+            const API_BASE_URL = `${import.meta.env.VITE_API_URL ?? 'http://localhost:4000'}/api/v1`;
+
+            const response = await fetch(`${API_BASE_URL}/preferences/housing-priorities`, {
                 headers: {
                     'Authorization': `Bearer ${token}`,
                     'Content-Type': 'application/json'
@@ -169,7 +171,10 @@ export default function PriorityDashboard() {
         setIsLoading(true);
         try {
             const token = localStorage.getItem('auth_token');
-            const response = await fetch('http://localhost:4000/api/v1/preferences/housing-priorities', {
+            const API_BASE_URL = `${import.meta.env.VITE_API_URL ?? 'http://localhost:4000'}/api/v1`;
+
+            const response = await fetch(`${API_BASE_URL}/preferences/housing-priorities`, {
+            
                 method: 'POST',
                 headers: {
                     'Authorization': `Bearer ${token}`,
