@@ -36,7 +36,8 @@ router.get('/theme', async (req: AuthRequest, res: Response) => {
       .maybeSingle();
 
     if (error) {
-      if (error.code === '42P01') {
+      // Handle table not found errors (PostgreSQL and PostgREST)
+      if (error.code === '42P01' || error.code === 'PGRST205') {
         console.warn('user_settings table not found; returning default theme.');
         return res.json({
           theme: 'system',
@@ -44,6 +45,7 @@ router.get('/theme', async (req: AuthRequest, res: Response) => {
           source: 'default',
         });
       }
+      // PGRST116 is "not found" (no rows) which is fine, continue
       if (error.code !== 'PGRST116') {
         console.error('Error fetching theme preference:', error);
         return res.json({
@@ -93,7 +95,8 @@ router.put('/theme', async (req: AuthRequest, res: Response) => {
       .maybeSingle();
 
     if (fetchError) {
-      if (fetchError.code === '42P01') {
+      // Handle table not found errors (PostgreSQL and PostgREST)
+      if (fetchError.code === '42P01' || fetchError.code === 'PGRST205') {
         console.warn('user_settings table not found; skipping persistence.');
         return res.json({
           message: 'Theme preference saved locally (persistence unavailable)',
@@ -101,6 +104,7 @@ router.put('/theme', async (req: AuthRequest, res: Response) => {
           persisted: false,
         });
       }
+      // PGRST116 is "not found" (no rows) which is fine, continue
       if (fetchError.code !== 'PGRST116') {
         console.error('Error checking existing theme preference:', fetchError);
         return respondWithLocalOnly(res, theme, 'Theme preference saved locally (persistence error).');
@@ -114,7 +118,8 @@ router.put('/theme', async (req: AuthRequest, res: Response) => {
         .eq('user_id', userId);
 
       if (updateError) {
-        if (updateError.code === '42P01') {
+        // Handle table not found errors (PostgreSQL and PostgREST)
+        if (updateError.code === '42P01' || updateError.code === 'PGRST205') {
           console.warn('user_settings table missing during update; skipping persistence.');
           return res.json({
             message: 'Theme preference saved locally (persistence unavailable)',
@@ -131,7 +136,8 @@ router.put('/theme', async (req: AuthRequest, res: Response) => {
         .insert({ user_id: userId, theme_preference: theme });
 
       if (insertError) {
-        if (insertError.code === '42P01') {
+        // Handle table not found errors (PostgreSQL and PostgREST)
+        if (insertError.code === '42P01' || insertError.code === 'PGRST205') {
           console.warn('user_settings table missing during insert; skipping persistence.');
           return res.json({
             message: 'Theme preference saved locally (persistence unavailable)',

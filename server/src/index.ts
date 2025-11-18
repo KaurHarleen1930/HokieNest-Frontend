@@ -29,6 +29,7 @@ import { supabase } from './lib/supabase';
 import attractionsRouter from './routes/attractions';
 import transitRouter from './routes/transit';
 import { communityRoutesGlobal } from "./routes/community.global";
+import telemetryRouter from './routes/telemetry';
 
 console.log("✅ SUPABASE_URL =", process.env.SUPABASE_URL);
 console.log("✅ SUPABASE_SERVICE_ROLE_KEY length =", process.env.SUPABASE_SERVICE_ROLE_KEY?.length);
@@ -93,6 +94,10 @@ console.log('✅ Attractions router registered at /api/v1/attractions');
 console.log('🚇 Registering transit router...');
 app.use('/api/v1/transit', transitRouter);
 console.log('✅ Transit router registered at /api/v1/transit');
+
+console.log('📊 Registering telemetry router...');
+app.use('/api/v1/telemetry', telemetryRouter);
+console.log('✅ Telemetry router registered at /api/v1/telemetry');
 
 // Error handling
 app.use(errorHandler);

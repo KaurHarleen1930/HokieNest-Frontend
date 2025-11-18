@@ -1047,6 +1047,14 @@ export const preferencesAPI = {
 };
 
 // Chatbot API
+// Simple Telemetry API
+export const telemetryAPI = {
+  // Get stats (admin only)
+  getStats: async (): Promise<any> => {
+    return apiRequest('/telemetry/stats');
+  },
+};
+
 export const chatbotAPI = {
   // Send message to chatbot
   sendMessage: async (message: string, sessionId?: string, currentPage?: string): Promise<{

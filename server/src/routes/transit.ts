@@ -211,26 +211,62 @@ router.get('/commute', async (req: Request, res: Response) => {
     console.log(`🚇 Calculating commute from [${fromLat}, ${fromLng}] to [${toLat}, ${toLng}]`);
 
     // 1. Find nearest station to 'from' (property)
-    const { data: fromStation, error: fromError } = await supabase.rpc(
+    // Note: RPC function returns wmata_station_code as varchar(10), not text
+    const { data: fromStationData, error: fromError } = await supabase.rpc(
       'find_nearest_station',
       { lat: parseFloat(fromLat as string), lng: parseFloat(fromLng as string) }
     );
-    if (fromError || !fromStation || fromStation.length === 0) {
-      throw new Error(`Could not find nearest 'from' station: ${fromError?.message || 'No station found'}`);
+    
+    if (fromError) {
+      console.error('Error calling find_nearest_station (from):', fromError);
+      // Fallback: Use property_transit_stations table instead
+      throw new Error(`Could not find nearest 'from' station: ${fromError.message}`);
     }
-    const fromStationCode = fromStation[0].wmata_station_code;
-    console.log(`🚇 'From' station found: ${fromStation[0].station_name} (${fromStationCode})`);
+    
+    // Handle both array and single object returns
+    // The RPC may return wmata_station_code as varchar, convert to string
+    const fromStation = Array.isArray(fromStationData) ? fromStationData[0] : fromStationData;
+    if (!fromStation) {
+      throw new Error(`Could not find nearest 'from' station: No station found`);
+    }
+    
+    // Handle varchar(10) to string conversion
+    const fromStationCode = typeof fromStation.wmata_station_code === 'string' 
+      ? fromStation.wmata_station_code 
+      : String(fromStation.wmata_station_code || '');
+    
+    if (!fromStationCode) {
+      throw new Error(`Could not find nearest 'from' station: No station code found`);
+    }
+    
+    console.log(`🚇 'From' station found: ${fromStation.station_name || fromStation.name || 'Unknown'} (${fromStationCode})`);
 
     // 2. Find nearest station to 'to' (campus)
-    const { data: toStation, error: toError } = await supabase.rpc(
+    const { data: toStationData, error: toError } = await supabase.rpc(
       'find_nearest_station',
       { lat: parseFloat(toLat as string), lng: parseFloat(toLng as string) }
     );
-    if (toError || !toStation || toStation.length === 0) {
-      throw new Error(`Could not find nearest 'to' station: ${toError?.message || 'No station found'}`);
+    
+    if (toError) {
+      console.error('Error calling find_nearest_station (to):', toError);
+      throw new Error(`Could not find nearest 'to' station: ${toError.message}`);
     }
-    const toStationCode = toStation[0].wmata_station_code;
-    console.log(`🚇 'To' station found: ${toStation[0].station_name} (${toStationCode})`);
+    
+    // Handle both array and single object returns
+    const toStation = Array.isArray(toStationData) ? toStationData[0] : toStationData;
+    if (!toStation) {
+      throw new Error(`Could not find nearest 'to' station: No station found`);
+    }
+    
+    // Handle varchar(10) to string conversion
+    const toStationCode = typeof toStation.wmata_station_code === 'string'
+      ? toStation.wmata_station_code
+      : String(toStation.wmata_station_code || '');
+    
+    if (!toStationCode) {
+      throw new Error(`Could not find nearest 'to' station: No station code found`);
+    }
+    console.log(`🚇 'To' station found: ${toStation.station_name || toStation.name || 'Unknown'} (${toStationCode})`);
 
     // 3. Calculate commute time between the two stations
     const commuteData = await calculateCommuteTime(fromStationCode, toStationCode);
@@ -238,15 +274,20 @@ router.get('/commute', async (req: Request, res: Response) => {
     res.json({
       success: true,
       data: {
-        fromStation: fromStation[0],
-        toStation: toStation[0],
+        fromStation: fromStation,
+        toStation: toStation,
         commute: commuteData
       }
     });
 
   } catch (error: any) {
     console.error('Error calculating commute:', error.message);
-    res.status(500).json({ success: false, error: error.message });
+    // Return error but don't crash - allow fallback to property_distances
+    res.status(500).json({ 
+      success: false, 
+      error: error.message,
+      fallback: 'Use property_distances table for distance information'
+    });
   }
 });
 

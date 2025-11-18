@@ -403,5 +403,247 @@ router.get('/health', async (req: Request, res: Response, next: NextFunction) =>
   }
 });
 
+// API connection test endpoint (for debugging)
+router.get('/test-connection', async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const { OpenAI } = await import('openai');
+    const apiKey = process.env.OPENAI_API_KEY || '';
+    let baseURL = process.env.OPENAI_BASE_URL || undefined;
+    
+    // Validate and fix common URL typo
+    if (baseURL && baseURL.includes('ai.openai.com') && !baseURL.includes('api.openai.com')) {
+      console.warn(`⚠️  [Test] Detected incorrect URL: ${baseURL}`);
+      console.warn(`   Correcting to: https://api.openai.com/v1`);
+      baseURL = undefined; // Use official API instead
+    }
+    
+    const apiURL = baseURL || 'https://api.openai.com/v1';
+    
+    console.log(`\n🔍 [API Connection Test]`);
+    console.log(`   - API URL: ${apiURL}`);
+    console.log(`   - API Key: ${apiKey ? `${apiKey.substring(0, 7)}...${apiKey.substring(apiKey.length - 4)}` : 'NOT SET'}`);
+    
+    if (!apiKey) {
+      return res.status(400).json({
+        success: false,
+        message: 'OPENAI_API_KEY is not set',
+        details: {
+          apiURL,
+          apiKeySet: false,
+        }
+      });
+    }
+    
+    // Test connection with a simple request
+    const testClient = new OpenAI({
+      apiKey,
+      baseURL,
+      timeout: 10000, // 10 second timeout for test
+    });
+    
+    const startTime = Date.now();
+    try {
+      const response = await testClient.models.list();
+      const responseTime = Date.now() - startTime;
+      
+      console.log(`✅ [API Connection Test] SUCCESS`);
+      console.log(`   - Response Time: ${responseTime}ms`);
+      console.log(`   - Models Available: ${response.data?.length || 0}\n`);
+      
+      res.json({
+        success: true,
+        message: 'OpenAI API connection successful',
+        details: {
+          apiURL,
+          apiKeySet: true,
+          responseTime: `${responseTime}ms`,
+          modelsAvailable: response.data?.length || 0,
+          timestamp: new Date().toISOString(),
+        }
+      });
+    } catch (error: any) {
+      const responseTime = Date.now() - startTime;
+      const errorMsg = error.message || error.toString();
+      const errorCode = error.code || error.status || 'UNKNOWN';
+      
+      console.error(`❌ [API Connection Test] FAILED`);
+      console.error(`   - Response Time: ${responseTime}ms`);
+      console.error(`   - Error: ${errorMsg}`);
+      console.error(`   - Code: ${errorCode}\n`);
+      
+      res.status(500).json({
+        success: false,
+        message: 'OpenAI API connection failed',
+        error: errorMsg,
+        details: {
+          apiURL,
+          apiKeySet: true,
+          responseTime: `${responseTime}ms`,
+          errorCode,
+          timestamp: new Date().toISOString(),
+        }
+      });
+    }
+  } catch (error: any) {
+    console.error('Connection test error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to test API connection',
+      error: error.message || error.toString(),
+    });
+  }
+});
+
+// Get chatbot conversation history
+// GET /api/v1/chatbot/conversations
+router.get('/conversations', authenticateToken as any, async (req: AuthRequest, res: Response, next: NextFunction) => {
+  try {
+    const userId = req.user?.id ? parseInt(req.user.id) : undefined;
+    const sessionId = req.query.sessionId as string | undefined;
+    const limit = parseInt(req.query.limit as string) || 50;
+    const offset = parseInt(req.query.offset as string) || 0;
+
+    const { supabase } = await import('../lib/supabase');
+    
+    let query = supabase
+      .from('chatbot_conversations')
+      .select('*')
+      .order('created_at', { ascending: false })
+      .range(offset, offset + limit - 1);
+
+    // Filter by user if authenticated
+    if (userId) {
+      query = query.eq('user_id', userId);
+    }
+
+    // Filter by session if provided
+    if (sessionId) {
+      query = query.eq('session_id', sessionId);
+    }
+
+    const { data, error } = await query;
+
+    if (error) {
+      console.error('Error fetching chatbot conversations:', error);
+      return res.status(500).json({
+        success: false,
+        message: 'Failed to fetch conversations',
+        error: error.message,
+      });
+    }
+
+    res.json({
+      success: true,
+      data: {
+        conversations: data || [],
+        count: data?.length || 0,
+        limit,
+        offset,
+      },
+    });
+  } catch (error: any) {
+    console.error('Error in /conversations endpoint:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Internal server error',
+      error: error.message,
+    });
+  }
+});
+
+// Get chatbot conversation history by session
+// GET /api/v1/chatbot/conversations/session/:sessionId
+router.get('/conversations/session/:sessionId', async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const sessionId = req.params.sessionId;
+    const limit = parseInt(req.query.limit as string) || 100;
+
+    const { supabase } = await import('../lib/supabase');
+    
+    const { data, error } = await supabase
+      .from('chatbot_conversations')
+      .select('*')
+      .eq('session_id', sessionId)
+      .order('created_at', { ascending: true })
+      .limit(limit);
+
+    if (error) {
+      console.error('Error fetching session conversations:', error);
+      return res.status(500).json({
+        success: false,
+        message: 'Failed to fetch session conversations',
+        error: error.message,
+      });
+    }
+
+    res.json({
+      success: true,
+      data: {
+        sessionId,
+        conversations: data || [],
+        count: data?.length || 0,
+      },
+    });
+  } catch (error: any) {
+    console.error('Error in /conversations/session/:sessionId endpoint:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Internal server error',
+      error: error.message,
+    });
+  }
+});
+
+// Get chatbot conversation statistics
+// GET /api/v1/chatbot/stats
+router.get('/stats', authenticateToken as any, async (req: AuthRequest, res: Response, next: NextFunction) => {
+  try {
+    const userId = req.user?.id ? parseInt(req.user.id) : undefined;
+
+    const { supabase } = await import('../lib/supabase');
+    
+    let query = supabase
+      .from('chatbot_conversations')
+      .select('*', { count: 'exact', head: false });
+
+    if (userId) {
+      query = query.eq('user_id', userId);
+    }
+
+    const { data, error, count } = await query;
+
+    if (error) {
+      console.error('Error fetching chatbot stats:', error);
+      return res.status(500).json({
+        success: false,
+        message: 'Failed to fetch statistics',
+        error: error.message,
+      });
+    }
+
+    // Calculate statistics
+    const totalConversations = count || 0;
+    const uniqueSessions = new Set((data || []).map(c => c.session_id)).size;
+    const uniqueUsers = userId ? 1 : new Set((data || []).map(c => c.user_id).filter(Boolean)).size;
+
+    res.json({
+      success: true,
+      data: {
+        totalConversations,
+        uniqueSessions,
+        uniqueUsers,
+        userId: userId || null,
+      },
+    });
+  } catch (error: any) {
+    console.error('Error in /stats endpoint:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Internal server error',
+      error: error.message,
+    });
+  }
+});
+
 export default router;
 

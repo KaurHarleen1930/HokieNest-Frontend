@@ -241,13 +241,16 @@ export async function fetchCommuteRoute(
     const response: AxiosResponse<CommuteRouteResponse> = await axios.get(
       `${API_BASE_URL}/transit/commute`,
       {
-        params: { fromLat, fromLng, toLat, toLng }
+        params: { fromLat, fromLng, toLat, toLng },
+        timeout: 5000 // 5 second timeout to prevent hanging
       }
     );
     return response.data;
-  } catch (error) {
-    console.error('Error calculating commute route:', error);
-    throw error;
+  } catch (error: any) {
+    // Log error but don't throw - allow fallback to property_distances
+    console.error('Error calculating commute route:', error?.response?.data?.error || error?.message || error);
+    // Return a response indicating failure but don't crash
+    throw error; // Let caller handle the error gracefully
   }
 }
 /**

@@ -840,10 +840,16 @@ export const PropertyMap: React.FC<PropertyMapProps> = ({
       campusCenter.lng
     )
       .then(res => {
-        setCommute(res.data);
+        if (res.success && res.data) {
+          setCommute(res.data);
+        } else {
+          console.warn('Commute route fetch returned unsuccessful response, using fallback');
+          setCommute(null);
+        }
       })
       .catch(err => {
-        console.error('Failed to fetch commute route:', err);
+        // Silently fail and use fallback - don't spam console
+        console.warn('Commute calculation failed, using property_distances fallback:', err?.response?.data?.error || err?.message);
         setCommute(null);
       });
 
