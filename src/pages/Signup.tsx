@@ -6,9 +6,8 @@ import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { useAuth } from "@/lib/auth";
-import { Home, AlertCircle, Eye, EyeOff, CheckCircle, Mail } from "lucide-react";
+import { Home, AlertCircle, Eye, EyeOff, CheckCircle } from "lucide-react";
 import { toast } from "sonner";
-import { Separator } from "@/components/ui/separator";
 
 export default function Signup() {
   const [name, setName] = useState("");
@@ -18,6 +17,7 @@ export default function Signup() {
   const [error, setError] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [oauthVerified, setOauthVerified] = useState(false);
+  const [agreeTerms, setAgreeTerms] = useState(false); // ✅ NEW
 
   const { signup, loginWithGoogle } = useAuth();
   const navigate = useNavigate();
@@ -25,41 +25,37 @@ export default function Signup() {
   // Handle OAuth callback from Google verification
   useEffect(() => {
     const urlParams = new URLSearchParams(window.location.search);
-    const tokenParam = urlParams.get('token');
-    const userParam = urlParams.get('user');
-    const errorParam = urlParams.get('error');
+    const tokenParam = urlParams.get("token");
+    const userParam = urlParams.get("user");
+    const errorParam = urlParams.get("error");
 
     if (tokenParam && userParam) {
-      // User completed Google OAuth successfully
-      // Case 1: Came from our signup form with saved data → auto-complete
-      const signupData = localStorage.getItem('signupData');
+      const signupData = localStorage.getItem("signupData");
+
       if (signupData) {
         const { email, password, name } = JSON.parse(signupData);
         completeSignupAfterOAuth(email, password, name);
-        localStorage.removeItem('signupData');
+        localStorage.removeItem("signupData");
       } else {
-        // Case 2: No saved data (e.g., direct OAuth) → prefill and ask for password
         try {
           const userData = JSON.parse(decodeURIComponent(userParam));
           if (userData?.email) setEmail(userData.email);
           if (userData?.name) setName(userData.name);
           setOauthVerified(true);
           toast.success("VT email verified. Set a password to finish signup.");
-        } catch (e) {
-          // ignore
+        } catch {
+          /* ignore */
         }
       }
 
-      // Clean up URL parameters
       window.history.replaceState({}, document.title, window.location.pathname);
     } else if (errorParam) {
-      if (errorParam === 'vt_email_required') {
-        setError('Only Virginia Tech (@vt.edu) email addresses are allowed');
-      } else if (errorParam === 'oauth_failed') {
-        setError('Google authentication failed. Please try again.');
+      if (errorParam === "vt_email_required") {
+        setError("Only Virginia Tech (@vt.edu) email addresses are allowed");
+      } else if (errorParam === "oauth_failed") {
+        setError("Google authentication failed. Please try again.");
       }
       setIsLoading(false);
-      // Clean up URL parameters
       window.history.replaceState({}, document.title, window.location.pathname);
     }
   }, []);
@@ -81,33 +77,32 @@ export default function Signup() {
     setError("");
     setIsLoading(true);
 
-    // Validate VT email
-    if (!email.endsWith('@vt.edu')) {
+    if (!email.endsWith("@vt.edu")) {
       setError("Please use your Virginia Tech email address (@vt.edu)");
       setIsLoading(false);
       return;
     }
 
-    // Validate password
     if (password.length < 6) {
       setError("Password must be at least 6 characters long");
       setIsLoading(false);
       return;
     }
 
+    if (!agreeTerms) {
+      setError("You must agree to the Terms of Use & Code of Conduct");
+      setIsLoading(false);
+      return;
+    }
+
     try {
       if (oauthVerified) {
-        // We already verified via Google; complete signup directly
         await completeSignupAfterOAuth(email, password, name);
       } else {
-        // Store form data temporarily in localStorage for after OAuth
-        localStorage.setItem('signupData', JSON.stringify({
-          email,
-          password,
-          name
-        }));
-
-        // Trigger Google OAuth to verify VT.edu email
+        localStorage.setItem(
+          "signupData",
+          JSON.stringify({ email, password, name })
+        );
         await loginWithGoogle();
       }
     } catch (err) {
@@ -116,7 +111,7 @@ export default function Signup() {
     }
   };
 
-  const isEmailValid = email.endsWith('@vt.edu') && email.length > 7;
+  const isEmailValid = email.endsWith("@vt.edu") && email.length > 7;
   const isPasswordValid = password.length >= 6;
   const isFormValid = name.trim() && isEmailValid && isPasswordValid;
 
@@ -125,7 +120,10 @@ export default function Signup() {
       <div className="w-full max-w-md space-y-6">
         {/* Header */}
         <div className="text-center">
-          <Link to="/" className="inline-flex items-center gap-2 text-2xl font-bold text-foreground hover:text-accent transition-colors">
+          <Link
+            to="/"
+            className="inline-flex items-center gap-2 text-2xl font-bold text-foreground hover:text-accent transition-colors"
+          >
             <Home className="h-8 w-8 text-accent" />
             HokieNest
           </Link>
@@ -136,14 +134,16 @@ export default function Signup() {
         <Card className="bg-surface border-surface-3">
           <CardHeader>
             <CardTitle>Sign Up</CardTitle>
-              <CardDescription>
+            <CardDescription>
               {oauthVerified
-                ? 'VT email verified via Google. Set a password to finish signup.'
-                : 'Verify your VT.edu email with Google, then create your account'}
-              </CardDescription>
+                ? "VT email verified via Google. Set a password to finish signup."
+                : "Verify your VT.edu email with Google, then create your account"}
+            </CardDescription>
           </CardHeader>
+
           <CardContent>
             <form onSubmit={handleSubmit} className="space-y-4">
+              {/* Name */}
               <div className="space-y-2">
                 <Label htmlFor="name">Full Name</Label>
                 <Input
@@ -158,6 +158,7 @@ export default function Signup() {
                 />
               </div>
 
+              {/* Email */}
               <div className="space-y-2">
                 <Label htmlFor="email">VT Email</Label>
                 <div className="relative">
@@ -172,14 +173,12 @@ export default function Signup() {
                     className="bg-surface-2 border-surface-3 pr-10"
                   />
                   {isEmailValid && (
-                    <CheckCircle className="absolute right-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-success" />
+                    <CheckCircle className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 text-success" />
                   )}
                 </div>
-                <p className="text-xs text-muted">
-                  Must be a valid @vt.edu email address
-                </p>
               </div>
 
+              {/* Password */}
               <div className="space-y-2">
                 <Label htmlFor="password">Password</Label>
                 <div className="relative">
@@ -208,11 +207,29 @@ export default function Signup() {
                     </Button>
                   </div>
                 </div>
-                <p className="text-xs text-muted">
-                  Must be at least 6 characters long
-                </p>
               </div>
 
+              {/* ⚠️ Terms Checkbox (NEW) */}
+              <div className="flex items-start gap-3 mt-4">
+                <input
+                  type="checkbox"
+                  id="agreeTerms"
+                  checked={agreeTerms}
+                  onChange={(e) => setAgreeTerms(e.target.checked)}
+                  className="mt-1 h-4 w-4 accent-accent"
+                />
+                <label htmlFor="agreeTerms" className="text-sm text-muted-foreground">
+                  I agree to the{" "}
+                  <Link
+                    to="/terms"
+                    className="text-accent underline hover:text-accent/80"
+                  >
+                    Terms of Use & Code of Conduct
+                  </Link>
+                </label>
+              </div>
+
+              {/* Error Message */}
               {error && (
                 <Alert variant="destructive">
                   <AlertCircle className="h-4 w-4" />
@@ -220,10 +237,11 @@ export default function Signup() {
                 </Alert>
               )}
 
+              {/* Submit */}
               <Button
                 type="submit"
                 className="w-full"
-                disabled={isLoading || !isFormValid}
+                disabled={isLoading || !isFormValid || !agreeTerms}
                 variant="accent"
               >
                 {isLoading ? "Creating account..." : "Complete Sign Up"}
@@ -233,7 +251,10 @@ export default function Signup() {
             <div className="mt-6 text-center">
               <p className="text-sm text-muted">
                 Already have an account?{" "}
-                <Link to="/login" className="text-accent hover:underline font-medium">
+                <Link
+                  to="/login"
+                  className="text-accent hover:underline font-medium"
+                >
                   Sign in here
                 </Link>
               </p>
