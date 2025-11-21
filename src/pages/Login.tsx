@@ -105,7 +105,8 @@ export default function Login() {
 
     setIsResending(true);
     try {
-      const response = await fetch('http://localhost:4000/api/auth/resend-verification', {
+      const API_BASE_URL = `${import.meta.env.VITE_API_URL ?? 'http://localhost:4000'}/api/v1`;
+      const response = await fetch(`${API_BASE_URL}/auth/resend-verification`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email }),
