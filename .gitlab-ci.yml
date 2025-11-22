@@ -15,7 +15,7 @@ variables:
   BACKEND_IMAGE: kaurharleenvt/hokienest-backend
 
 # ============================================
-# BUILD JOBS (Automatic on every commit)
+# BUILD JOBS
 # ============================================
 
 build-frontend:
@@ -25,19 +25,22 @@ build-frontend:
     - docker:24-dind
   before_script:
     - echo $DOCKER_PASSWORD | docker login -u $DOCKER_USERNAME --password-stdin
+    - docker context create buildx-context || true
+    - docker buildx create --use buildx-context || true
+    - docker buildx inspect --bootstrap
   script:
-    - echo "🔨 Building Frontend..."
+    - echo "🔨 Building Frontend for linux/amd64..."
     - |
-      docker build \
+      docker buildx build \
+        --platform linux/amd64 \
         --build-arg VITE_SUPABASE_URL="$VITE_SUPABASE_URL" \
         --build-arg VITE_SUPABASE_ANON_KEY="$VITE_SUPABASE_ANON_KEY" \
         --build-arg VITE_API_URL="$VITE_API_URL" \
         -t $FRONTEND_IMAGE:$CI_COMMIT_SHORT_SHA \
         -t $FRONTEND_IMAGE:latest \
+        --push \
         .
-    - docker push $FRONTEND_IMAGE:$CI_COMMIT_SHORT_SHA
-    - docker push $FRONTEND_IMAGE:latest
-    - echo "✅ Frontend built and pushed!"
+    - echo "✅ Frontend built for linux/amd64!"
   only:
     - main
   tags:
@@ -50,23 +53,26 @@ build-backend:
     - docker:24-dind
   before_script:
     - echo $DOCKER_PASSWORD | docker login -u $DOCKER_USERNAME --password-stdin
+    - docker context create buildx-context || true
+    - docker buildx create --use buildx-context || true
+    - docker buildx inspect --bootstrap
   script:
-    - echo "🔨 Building Backend..."
+    - echo "🔨 Building Backend for linux/amd64..."
     - |
-      docker build \
+      docker buildx build \
+        --platform linux/amd64 \
         -t $BACKEND_IMAGE:$CI_COMMIT_SHORT_SHA \
         -t $BACKEND_IMAGE:latest \
+        --push \
         ./server
-    - docker push $BACKEND_IMAGE:$CI_COMMIT_SHORT_SHA
-    - docker push $BACKEND_IMAGE:latest
-    - echo "✅ Backend built and pushed!"
+    - echo "✅ Backend built for linux/amd64!"
   only:
     - main
   tags:
     - hokienest
 
 # ============================================
-# TEST JOBS (Automatic after build)
+# TEST JOBS
 # ============================================
 
 test-frontend:
@@ -96,7 +102,7 @@ test-backend:
     - hokienest
 
 # ============================================
-# STAGING DEPLOYMENT (Automatic on main)
+# STAGING DEPLOYMENT
 # ============================================
 
 deploy-staging:
@@ -121,7 +127,7 @@ deploy-staging:
     - hokienest
 
 # ============================================
-# PRODUCTION DEPLOYMENT (Manual trigger)
+# PRODUCTION DEPLOYMENT
 # ============================================
 
 deploy-production:
@@ -137,7 +143,7 @@ deploy-production:
     - sleep 15
     - kubectl get pods -n $KUBE_NAMESPACE
     - echo "✅ Production deployed!"
-    - echo "🎉 Live at: https://hokienest.discovery.cs.vt.edu"
+    - echo "🎉 Live at https://hokienest.discovery.cs.vt.edu"
   environment:
     name: production
     url: https://hokienest.discovery.cs.vt.edu
